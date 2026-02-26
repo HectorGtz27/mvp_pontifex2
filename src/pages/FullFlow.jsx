@@ -11,9 +11,21 @@ import {
 const GRADE_COLORS = { A: 'bg-emerald-100 text-emerald-800', B: 'bg-sky-100 text-sky-800', C: 'bg-amber-100 text-amber-800', D: 'bg-red-100 text-red-800' }
 
 const STEPS = [
+  { id: 0, label: 'Datos de la solicitud', short: 'Datos' },
   { id: 1, label: 'Documentos', short: 'Documentos' },
   { id: 2, label: 'Evaluación y decisión', short: 'Decisión' },
 ]
+
+const INITIAL_FORM = {
+  applicant: '',
+  requestedAmount: '',
+  termMonths: '',
+  purpose: '',
+  contactEmail: '',
+  contactPhone: '',
+  organizationType: '',
+  notes: '',
+}
 
 function docStatus(id) {
   if (id === 'estados_financieros') return { status: 'validated', fileName: 'Estados_Financieros_2024.pdf' }
@@ -23,17 +35,23 @@ function docStatus(id) {
 }
 
 export default function FullFlow() {
-  const [currentStep, setCurrentStep] = useState(1)
-  const [docSubStep, setDocSubStep] = useState('checklist') // checklist | upload | extraction
+  const [currentStep, setCurrentStep] = useState(0)
+  const [formData, setFormData] = useState(INITIAL_FORM)
+  const [docSubStep, setDocSubStep] = useState('checklist')
   const [selectedDocType, setSelectedDocType] = useState(null)
   const [documentsComplete, setDocumentsComplete] = useState(false)
   const [decision, setDecision] = useState(null)
   const [analystNotes, setAnalystNotes] = useState('')
 
+  const formComplete = formData.applicant.trim() && formData.requestedAmount && formData.termMonths && formData.purpose.trim()
+  const canGoToStep1 = formComplete
   const canGoToStep2 = documentsComplete
 
+  const updateForm = (field, value) => setFormData((prev) => ({ ...prev, [field]: value }))
+
   const resetFlow = () => {
-    setCurrentStep(1)
+    setCurrentStep(0)
+    setFormData(INITIAL_FORM)
     setDocSubStep('checklist')
     setDocumentsComplete(false)
     setDecision(null)
@@ -57,7 +75,8 @@ export default function FullFlow() {
               <button
                 type="button"
                 onClick={() => {
-                  if (step.id === 1) setCurrentStep(1)
+                  if (step.id === 0) setCurrentStep(0)
+                  if (step.id === 1 && canGoToStep1) setCurrentStep(1)
                   if (step.id === 2 && canGoToStep2) setCurrentStep(2)
                 }}
                 className={`flex items-center gap-2 w-full ${i < STEPS.length - 1 ? 'max-w-[200px]' : ''}`}
@@ -67,7 +86,7 @@ export default function FullFlow() {
                   ${currentStep > step.id ? 'bg-pontifex-100 text-pontifex-700' : ''}
                   ${currentStep < step.id ? 'bg-slate-100 text-slate-400' : ''}
                 `}>
-                  {currentStep > step.id ? '✓' : step.id}
+                  {currentStep > step.id ? '✓' : step.id + 1}
                 </span>
                 <span className={`text-sm font-medium hidden sm:inline ${currentStep >= step.id ? 'text-slate-800' : 'text-slate-400'}`}>
                   {step.short}
@@ -81,19 +100,160 @@ export default function FullFlow() {
         </div>
       </div>
 
+      {/* ========== STEP 0: Datos de la solicitud (no extraíbles de documentos) ========== */}
+      {currentStep === 0 && (
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Datos de la solicitud</h1>
+            <p className="text-slate-600 mt-1">Información que no se obtiene de los documentos; complétala antes de subir archivos.</p>
+          </div>
+
+          <form
+            onSubmit={(e) => { e.preventDefault(); if (formComplete) setCurrentStep(1) }}
+            className="bg-white rounded-xl border border-slate-200 p-6 space-y-6"
+          >
+            <div className="grid sm:grid-cols-2 gap-6">
+              <div>
+                <label htmlFor="applicant" className="block text-sm font-medium text-slate-700 mb-1">Solicitante / Organización *</label>
+                <input
+                  id="applicant"
+                  type="text"
+                  value={formData.applicant}
+                  onChange={(e) => updateForm('applicant', e.target.value)}
+                  placeholder="Nombre de la organización o razón social"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500"
+                />
+              </div>
+              <div>
+                <label htmlFor="organizationType" className="block text-sm font-medium text-slate-700 mb-1">Tipo de organización</label>
+                <select
+                  id="organizationType"
+                  value={formData.organizationType}
+                  onChange={(e) => updateForm('organizationType', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500"
+                >
+                  <option value="">Seleccionar</option>
+                  <option value="OSC">OSC / A.C.</option>
+                  <option value="Fundacion">Fundación</option>
+                  <option value="Empresa">Empresa</option>
+                  <option value="Cooperativa">Cooperativa</option>
+                  <option value="Otro">Otro</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-6">
+              <div>
+                <label htmlFor="requestedAmount" className="block text-sm font-medium text-slate-700 mb-1">Monto solicitado (MXN) *</label>
+                <input
+                  id="requestedAmount"
+                  type="number"
+                  min="1"
+                  value={formData.requestedAmount}
+                  onChange={(e) => updateForm('requestedAmount', e.target.value)}
+                  placeholder="Ej. 850000"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500"
+                />
+              </div>
+              <div>
+                <label htmlFor="termMonths" className="block text-sm font-medium text-slate-700 mb-1">Plazo (meses) *</label>
+                <input
+                  id="termMonths"
+                  type="number"
+                  min="1"
+                  max="120"
+                  value={formData.termMonths}
+                  onChange={(e) => updateForm('termMonths', e.target.value)}
+                  placeholder="Ej. 24"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="purpose" className="block text-sm font-medium text-slate-700 mb-1">Propósito / Destino del crédito *</label>
+              <input
+                id="purpose"
+                type="text"
+                value={formData.purpose}
+                onChange={(e) => updateForm('purpose', e.target.value)}
+                placeholder="Ej. Capital de trabajo y equipo"
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500"
+              />
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-6">
+              <div>
+                <label htmlFor="contactEmail" className="block text-sm font-medium text-slate-700 mb-1">Email de contacto</label>
+                <input
+                  id="contactEmail"
+                  type="email"
+                  value={formData.contactEmail}
+                  onChange={(e) => updateForm('contactEmail', e.target.value)}
+                  placeholder="contacto@organizacion.org"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500"
+                />
+              </div>
+              <div>
+                <label htmlFor="contactPhone" className="block text-sm font-medium text-slate-700 mb-1">Teléfono</label>
+                <input
+                  id="contactPhone"
+                  type="tel"
+                  value={formData.contactPhone}
+                  onChange={(e) => updateForm('contactPhone', e.target.value)}
+                  placeholder="Ej. 55 1234 5678"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="notes" className="block text-sm font-medium text-slate-700 mb-1">Observaciones</label>
+              <textarea
+                id="notes"
+                rows={2}
+                value={formData.notes}
+                onChange={(e) => updateForm('notes', e.target.value)}
+                placeholder="Información adicional que no proviene de los documentos"
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500 resize-none"
+              />
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="submit"
+                disabled={!formComplete}
+                className="px-5 py-2.5 bg-pontifex-600 text-white rounded-lg font-medium hover:bg-pontifex-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Continuar a documentos →
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* ========== STEP 1: Documentos ========== */}
       {currentStep === 1 && (
         <div className="space-y-6">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Paso 1 — Carga y validación de documentos</h1>
-            <p className="text-slate-600 mt-1">Sube los documentos; el sistema extrae y valida los datos para el análisis.</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">Paso 1 — Carga y validación de documentos</h1>
+              <p className="text-slate-600 mt-1">Sube los documentos; el sistema extrae y valida los datos para el análisis.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setCurrentStep(0)}
+              className="px-4 py-2 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-100 text-sm"
+            >
+              ← Datos de solicitud
+            </button>
           </div>
 
           {docSubStep === 'checklist' && (
             <>
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                  <span className="font-medium text-slate-800">Solicitud {MOCK_APPLICATION.id}</span>
+                  <span className="font-medium text-slate-800">Solicitud — {formData.applicant || 'Solicitante'}</span>
                   <span className="text-sm text-slate-600">
                     {MOCK_APPLICATION.documentsStatus.validated}/{MOCK_APPLICATION.documentsStatus.total} validados
                   </span>
@@ -210,7 +370,7 @@ export default function FullFlow() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-slate-900">Dashboard de evaluación</h1>
-              <p className="text-slate-600 mt-1">{MOCK_APPLICATION.id} · {MOCK_APPLICATION.applicant}</p>
+              <p className="text-slate-600 mt-1">{formData.applicant || 'Solicitante'}</p>
             </div>
             <button
               type="button"
@@ -226,7 +386,7 @@ export default function FullFlow() {
             <div className="bg-white rounded-xl border border-slate-200 p-4">
               <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Monto solicitado</p>
               <p className="text-lg font-semibold text-slate-900 mt-1">
-                {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(MOCK_APPLICATION.requestedAmount)}
+                {formData.requestedAmount ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(Number(formData.requestedAmount)) : '—'}
               </p>
             </div>
             <div className="bg-white rounded-xl border border-slate-200 p-4">
@@ -287,8 +447,8 @@ export default function FullFlow() {
               <div className="bg-white rounded-xl border border-slate-200 p-5">
                 <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Solicitud</h2>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
-                  <div><span className="text-slate-500 block">Plazo</span><span className="font-medium">{MOCK_APPLICATION.termMonths} meses</span></div>
-                  <div><span className="text-slate-500 block">Destino</span><span className="font-medium">{MOCK_APPLICATION.purpose}</span></div>
+                  <div><span className="text-slate-500 block">Plazo</span><span className="font-medium">{formData.termMonths || '—'} meses</span></div>
+                  <div><span className="text-slate-500 block">Destino</span><span className="font-medium">{formData.purpose || '—'}</span></div>
                   <div><span className="text-slate-500 block">Monto sugerido</span><span className="font-medium">{new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(MOCK_RECOMMENDATION.suggestedAmount)}</span></div>
                 </div>
               </div>
