@@ -10,7 +10,7 @@ function App() {
             <div className="w-8 h-8 rounded-md bg-pontifex-600 flex items-center justify-center text-white font-semibold text-sm">P</div>
             <span className="font-semibold text-slate-800">Pontifex</span>
           </Link>
-          <span className="text-sm text-slate-500">Flujo completo: Documentos → Decisión → Covenants</span>
+          <span className="text-sm text-slate-500">Flujo: Documentos → Decisión</span>
         </div>
       </header>
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-8">

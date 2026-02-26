@@ -6,16 +6,13 @@ import {
   MOCK_SCORE,
   MOCK_KPIS,
   MOCK_RECOMMENDATION,
-  MOCK_CREDITS,
 } from '../data/mock'
 
 const GRADE_COLORS = { A: 'bg-emerald-100 text-emerald-800', B: 'bg-sky-100 text-sky-800', C: 'bg-amber-100 text-amber-800', D: 'bg-red-100 text-red-800' }
-const STATUS_STYLES = { green: 'bg-emerald-100 text-emerald-800', yellow: 'bg-amber-100 text-amber-800', red: 'bg-red-100 text-red-800' }
 
 const STEPS = [
   { id: 1, label: 'Documentos', short: 'Documentos' },
   { id: 2, label: 'Evaluación y decisión', short: 'Decisión' },
-  { id: 3, label: 'Monitoreo de covenants', short: 'Covenants' },
 ]
 
 function docStatus(id) {
@@ -34,7 +31,6 @@ export default function FullFlow() {
   const [analystNotes, setAnalystNotes] = useState('')
 
   const canGoToStep2 = documentsComplete
-  const canGoToStep3 = decision === 'approved' || decision === 'adjusted'
 
   const resetFlow = () => {
     setCurrentStep(1)
@@ -43,27 +39,6 @@ export default function FullFlow() {
     setDecision(null)
     setAnalystNotes('')
   }
-
-  // Newly approved credit for step 3 (same applicant from flow)
-  const newlyApprovedCredit = canGoToStep3 ? {
-    id: 'CR-004',
-    applicant: MOCK_APPLICATION.applicant,
-    amount: MOCK_RECOMMENDATION.suggestedAmount,
-    disbursedAt: new Date().toISOString().slice(0, 10),
-    termMonths: MOCK_RECOMMENDATION.suggestedTermMonths,
-    balance: MOCK_RECOMMENDATION.suggestedAmount,
-    gradeAtDisbursement: MOCK_SCORE.grade,
-    isNew: true,
-    covenants: [
-      { name: 'DSCR', current: 1.35, threshold: 1.2, status: 'green', trigger: 'DSCR < 1.2 → alerta' },
-      { name: 'Deuda/EBIT', current: 3.2, threshold: 4, status: 'green', trigger: '> 4 → alerta roja' },
-      { name: 'Capital de trabajo', current: 150000, status: 'green', trigger: 'Negativo → bloqueo' },
-      { name: 'Mora Buró', current: 0, status: 'green', trigger: '> 30 días → revisión' },
-    ],
-    alerts: [],
-  } : null
-
-  const portfolioCredits = newlyApprovedCredit ? [newlyApprovedCredit, ...MOCK_CREDITS] : MOCK_CREDITS
 
   return (
     <div className="space-y-8">
@@ -84,7 +59,6 @@ export default function FullFlow() {
                 onClick={() => {
                   if (step.id === 1) setCurrentStep(1)
                   if (step.id === 2 && canGoToStep2) setCurrentStep(2)
-                  if (step.id === 3 && canGoToStep3) setCurrentStep(3)
                 }}
                 className={`flex items-center gap-2 w-full ${i < STEPS.length - 1 ? 'max-w-[200px]' : ''}`}
               >
@@ -362,108 +336,6 @@ export default function FullFlow() {
             >
               ← Documentos
             </button>
-            {canGoToStep3 ? (
-              <button
-                type="button"
-                onClick={() => setCurrentStep(3)}
-                className="px-5 py-2.5 bg-pontifex-600 text-white rounded-lg font-medium hover:bg-pontifex-700"
-              >
-                Ver monitoreo de covenants →
-              </button>
-            ) : (
-              <p className="text-sm text-slate-500">Aprobar o aprobar con ajustes para continuar al monitoreo.</p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ========== STEP 3: Covenants ========== */}
-      {currentStep === 3 && (
-        <div className="space-y-6">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Paso 3 — Monitoreo de covenants y triggers</h1>
-            <p className="text-slate-600 mt-1">Estado de cada crédito desembolsado y alertas automáticas.</p>
-          </div>
-
-          {newlyApprovedCredit && (
-            <div className="bg-pontifex-50 border border-pontifex-200 rounded-xl px-4 py-2 text-sm text-pontifex-800">
-              <strong>Crédito recién aprobado</strong> (CR-004) aparece en la cartera y será monitoreado con los mismos covenants.
-            </div>
-          )}
-
-          <div className="grid gap-4">
-            {portfolioCredits.map((credit) => (
-              <div key={credit.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-3">
-                    <span className="font-mono font-medium text-slate-800">{credit.id}</span>
-                    {credit.isNew && <span className="px-2 py-0.5 rounded text-xs font-medium bg-pontifex-200 text-pontifex-800">Recién desembolsado</span>}
-                    <span className="text-slate-700">{credit.applicant}</span>
-                    <span className="text-sm text-slate-500">
-                      {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(credit.amount)}
-                      {!credit.isNew && ` · Saldo: ${new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(credit.balance)}`}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {credit.alerts?.some((a) => a.type === 'red') && <span className="px-2 py-1 rounded text-xs font-medium bg-red-100 text-red-800">Alertas rojas</span>}
-                    {credit.alerts?.some((a) => a.type === 'yellow') && !credit.alerts?.some((a) => a.type === 'red') && <span className="px-2 py-1 rounded text-xs font-medium bg-amber-100 text-amber-800">Alerta amarilla</span>}
-                    {(!credit.alerts || credit.alerts.length === 0) && <span className="px-2 py-1 rounded text-xs font-medium bg-emerald-100 text-emerald-800">Sin alertas</span>}
-                  </div>
-                </div>
-                <div className="p-4">
-                  <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                    {credit.covenants.map((c, i) => (
-                      <div key={i} className="border border-slate-100 rounded-lg p-3">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-sm font-medium text-slate-700">{c.name}</span>
-                          <span className={`text-xs px-1.5 py-0.5 rounded ${STATUS_STYLES[c.status]}`}>
-                            {c.status === 'green' ? 'OK' : c.status === 'yellow' ? 'Alerta' : 'Trigger'}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-500 mb-1">{c.trigger}</p>
-                        {c.current !== undefined && (
-                          <p className="text-sm font-mono text-slate-800">
-                            Actual: {typeof c.current === 'number' && c.current > 100 ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(c.current) : c.current}
-                            {c.threshold !== undefined && <span className="text-slate-500"> / límite {c.threshold}</span>}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  {credit.alerts && credit.alerts.length > 0 && (
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-medium text-slate-700">Alertas activas</h4>
-                      {credit.alerts.map((a, i) => (
-                        <div key={i} className={`text-sm px-3 py-2 rounded-lg ${a.type === 'red' ? 'bg-red-50 text-red-800 border border-red-100' : 'bg-amber-50 text-amber-800 border border-amber-100'}`}>
-                          {a.text}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="bg-slate-50 rounded-xl border border-slate-200 p-5 text-sm text-slate-600">
-            <h3 className="font-medium text-slate-800 mb-2">Reglas de triggers</h3>
-            <ul className="list-disc list-inside space-y-1">
-              <li>DSCR &lt; 1.2 → Alerta amarilla</li>
-              <li>Deuda/EBIT &gt; 4 → Alerta roja</li>
-              <li>Mora en buró &gt; 30 días → Revisión manual</li>
-              <li>Capital de trabajo negativo → Bloqueo automático</li>
-            </ul>
-          </div>
-
-          <div className="flex justify-between">
-            <button
-              type="button"
-              onClick={() => setCurrentStep(2)}
-              className="px-4 py-2 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-100"
-            >
-              ← Decisión
-            </button>
-            <p className="text-sm text-slate-500">Flujo completo. Puedes volver a cualquier paso desde el indicador superior.</p>
           </div>
         </div>
       )}
