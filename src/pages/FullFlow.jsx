@@ -204,138 +204,158 @@ export default function FullFlow() {
         </div>
       )}
 
-      {/* ========== STEP 2: Evaluación y decisión ========== */}
+      {/* ========== STEP 2: Dashboard de evaluación ========== */}
       {currentStep === 2 && (
         <div className="space-y-6">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Paso 2 — Evaluación y decisión crediticia</h1>
-            <p className="text-slate-600 mt-1">Score, KPIs, recomendación del sistema y decisión del analista.</p>
-          </div>
-
-          <div className="grid lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 space-y-6">
-              <div className="bg-white rounded-xl border border-slate-200 p-5">
-                <h2 className="font-semibold text-slate-900 mb-4">Solicitud</h2>
-                <dl className="grid grid-cols-2 gap-3 text-sm">
-                  <dt className="text-slate-500">ID</dt>
-                  <dd className="font-mono">{MOCK_APPLICATION.id}</dd>
-                  <dt className="text-slate-500">Solicitante</dt>
-                  <dd>{MOCK_APPLICATION.applicant}</dd>
-                  <dt className="text-slate-500">Monto solicitado</dt>
-                  <dd>{new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(MOCK_APPLICATION.requestedAmount)}</dd>
-                  <dt className="text-slate-500">Plazo</dt>
-                  <dd>{MOCK_APPLICATION.termMonths} meses</dd>
-                  <dt className="text-slate-500">Documentos</dt>
-                  <dd>{MOCK_APPLICATION.documentsStatus.total}/9 validados</dd>
-                </dl>
-              </div>
-              <div className="bg-white rounded-xl border border-slate-200 p-5">
-                <h2 className="font-semibold text-slate-900 mb-4">KPIs calculados</h2>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-slate-500 border-b border-slate-100">
-                      <th className="pb-2 font-medium">Indicador</th>
-                      <th className="pb-2 font-medium">Valor</th>
-                      <th className="pb-2 font-medium">Benchmark</th>
-                      <th className="pb-2 font-medium w-16">Estado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {MOCK_KPIS.map((k, i) => (
-                      <tr key={i} className="border-b border-slate-50">
-                        <td className="py-2 text-slate-800">{k.name}</td>
-                        <td className="py-2 font-mono">{k.format === 'percent' ? `${(k.value * 100).toFixed(2)}%` : k.value}</td>
-                        <td className="py-2 text-slate-500">{k.benchmark}</td>
-                        <td className="py-2">{k.status === 'ok' ? <span className="text-emerald-600">✓</span> : <span className="text-amber-600">⚠</span>}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="bg-white rounded-xl border border-slate-200 p-5">
-                <h2 className="font-semibold text-slate-900 mb-4">Recomendación del sistema</h2>
-                <div className="space-y-2 text-sm">
-                  <p><span className="text-slate-500">Acción:</span> <span className="font-medium">Aprobar con condiciones</span></p>
-                  <p><span className="text-slate-500">Monto sugerido:</span> {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(MOCK_RECOMMENDATION.suggestedAmount)} · {MOCK_RECOMMENDATION.suggestedTermMonths} meses · {MOCK_RECOMMENDATION.suggestedRate}</p>
-                  <ul className="list-disc list-inside text-slate-700 mt-2 space-y-1">
-                    {MOCK_RECOMMENDATION.conditions.map((c, i) => <li key={i}>{c}</li>)}
-                  </ul>
-                  <p className="text-slate-600 italic mt-2">"{MOCK_RECOMMENDATION.analystNotes}"</p>
-                </div>
-              </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">Dashboard de evaluación</h1>
+              <p className="text-slate-600 mt-1">{MOCK_APPLICATION.id} · {MOCK_APPLICATION.applicant}</p>
             </div>
-            <div className="space-y-6">
-              <div className="bg-white rounded-xl border border-slate-200 p-5">
-                <h2 className="font-semibold text-slate-900 mb-4">Score</h2>
-                <div className="flex items-center gap-4 mb-4">
-                  <div className={`w-14 h-14 rounded-xl flex items-center justify-center text-2xl font-bold ${GRADE_COLORS[MOCK_SCORE.grade]}`}>
-                    {MOCK_SCORE.grade}
-                  </div>
-                  <div>
-                    <p className="font-medium text-slate-800">{MOCK_SCORE.gradeLabel}</p>
-                    <p className="text-sm text-slate-500">Compuesto: {MOCK_SCORE.composite}/100 · Buró: {MOCK_SCORE.bureauBand}</p>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  {MOCK_SCORE.scoreBreakdown.map((b, i) => (
-                    <div key={i} className="flex items-center gap-2 text-sm">
-                      <span className="w-24 text-slate-600">{b.name}</span>
-                      <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div className="h-full rounded-full bg-pontifex-500" style={{ width: `${b.score}%` }} />
-                      </div>
-                      <span className="w-8 text-right font-mono">{b.score}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="bg-white rounded-xl border border-slate-200 p-5">
-                <h2 className="font-semibold text-slate-900 mb-4">Decisión del analista</h2>
-                <textarea
-                  placeholder="Motivo (obligatorio para auditoría)"
-                  value={analystNotes}
-                  onChange={(e) => setAnalystNotes(e.target.value)}
-                  className="w-full h-24 px-3 py-2 border border-slate-200 rounded-lg text-sm resize-none focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500"
-                />
-                <div className="flex flex-col gap-2 mt-4">
-                  <button
-                    type="button"
-                    onClick={() => setDecision('approved')}
-                    className="w-full py-2.5 rounded-lg font-medium bg-emerald-600 text-white hover:bg-emerald-700"
-                  >
-                    Aprobar (según recomendación)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDecision('adjusted')}
-                    className="w-full py-2.5 rounded-lg font-medium border border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100"
-                  >
-                    Aprobar con ajustes
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDecision('rejected')}
-                    className="w-full py-2.5 rounded-lg font-medium border border-red-200 text-red-700 bg-red-50 hover:bg-red-100"
-                  >
-                    Rechazar
-                  </button>
-                </div>
-                {decision && (
-                  <p className="mt-3 text-sm text-slate-600">
-                    Decisión: <strong>{decision === 'approved' ? 'Aprobado' : decision === 'adjusted' ? 'Aprobado con ajustes' : 'Rechazado'}</strong>.
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex justify-between">
             <button
               type="button"
               onClick={() => setCurrentStep(1)}
-              className="px-4 py-2 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-100"
+              className="px-4 py-2 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-100 text-sm"
             >
               ← Documentos
             </button>
+          </div>
+
+          {/* KPI cards row */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Monto solicitado</p>
+              <p className="text-lg font-semibold text-slate-900 mt-1">
+                {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(MOCK_APPLICATION.requestedAmount)}
+              </p>
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Score</p>
+              <p className="text-lg font-semibold text-slate-900 mt-1 flex items-center gap-2">
+                <span className={`inline-flex w-8 h-8 items-center justify-center rounded-lg text-sm font-bold ${GRADE_COLORS[MOCK_SCORE.grade]}`}>
+                  {MOCK_SCORE.grade}
+                </span>
+                {MOCK_SCORE.gradeLabel}
+              </p>
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">DSCR</p>
+              <p className="text-lg font-semibold text-emerald-600 mt-1">
+                {MOCK_KPIS.find(k => k.name === 'DSCR')?.value ?? '—'}
+              </p>
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Documentos</p>
+              <p className="text-lg font-semibold text-slate-900 mt-1">
+                {MOCK_APPLICATION.documentsStatus.validated}/{MOCK_APPLICATION.documentsStatus.total} validados
+              </p>
+            </div>
+          </div>
+
+          {/* Main dashboard grid */}
+          <div className="grid lg:grid-cols-3 gap-6">
+            {/* Score card - prominent */}
+            <div className="lg:row-span-2 bg-white rounded-xl border border-slate-200 p-5">
+              <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">Clasificación</h2>
+              <div className="flex items-center gap-4 mb-6">
+                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-3xl font-bold ${GRADE_COLORS[MOCK_SCORE.grade]}`}>
+                  {MOCK_SCORE.grade}
+                </div>
+                <div>
+                  <p className="font-semibold text-slate-900 text-lg">{MOCK_SCORE.gradeLabel}</p>
+                  <p className="text-sm text-slate-500">Compuesto {MOCK_SCORE.composite}/100</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{MOCK_SCORE.bureauBand}</p>
+                </div>
+              </div>
+              <div className="space-y-3">
+                {MOCK_SCORE.scoreBreakdown.map((b, i) => (
+                  <div key={i}>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-slate-600">{b.name}</span>
+                      <span className="font-mono text-slate-700">{b.score}</span>
+                    </div>
+                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full bg-pontifex-500" style={{ width: `${b.score}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Solicitud + Recomendación */}
+            <div className="lg:col-span-2 space-y-6">
+              <div className="bg-white rounded-xl border border-slate-200 p-5">
+                <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Solicitud</h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+                  <div><span className="text-slate-500 block">Plazo</span><span className="font-medium">{MOCK_APPLICATION.termMonths} meses</span></div>
+                  <div><span className="text-slate-500 block">Destino</span><span className="font-medium">{MOCK_APPLICATION.purpose}</span></div>
+                  <div><span className="text-slate-500 block">Monto sugerido</span><span className="font-medium">{new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(MOCK_RECOMMENDATION.suggestedAmount)}</span></div>
+                </div>
+              </div>
+              <div className="bg-white rounded-xl border border-slate-200 p-5">
+                <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Recomendación del sistema</h2>
+                <p className="text-slate-800 font-medium mb-2">Aprobar con condiciones · {MOCK_RECOMMENDATION.suggestedRate}</p>
+                <ul className="text-sm text-slate-600 space-y-1 list-disc list-inside">
+                  {MOCK_RECOMMENDATION.conditions.map((c, i) => <li key={i}>{c}</li>)}
+                </ul>
+                <p className="text-slate-500 italic text-sm mt-3">"{MOCK_RECOMMENDATION.analystNotes}"</p>
+              </div>
+            </div>
+
+            {/* KPIs compact */}
+            <div className="bg-white rounded-xl border border-slate-200 p-5">
+              <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Indicadores</h2>
+              <div className="space-y-2">
+                {MOCK_KPIS.map((k, i) => (
+                  <div key={i} className="flex justify-between items-center text-sm">
+                    <span className="text-slate-600">{k.name}</span>
+                    <span className="font-mono text-slate-800">
+                      {k.format === 'percent' ? `${(k.value * 100).toFixed(2)}%` : k.value}
+                      <span className="ml-1 text-slate-400">{k.status === 'ok' ? '✓' : '⚠'}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Decisión - full width */}
+            <div className="lg:col-span-3 bg-white rounded-xl border border-slate-200 p-5">
+              <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Decisión del analista</h2>
+              <textarea
+                placeholder="Motivo (obligatorio para auditoría)"
+                value={analystNotes}
+                onChange={(e) => setAnalystNotes(e.target.value)}
+                className="w-full h-20 px-3 py-2 border border-slate-200 rounded-lg text-sm resize-none focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500 mb-4"
+              />
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => setDecision('approved')}
+                  className="px-5 py-2.5 rounded-lg font-medium bg-emerald-600 text-white hover:bg-emerald-700"
+                >
+                  Aprobar (según recomendación)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDecision('adjusted')}
+                  className="px-5 py-2.5 rounded-lg font-medium border border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100"
+                >
+                  Aprobar con ajustes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDecision('rejected')}
+                  className="px-5 py-2.5 rounded-lg font-medium border border-red-200 text-red-700 bg-red-50 hover:bg-red-100"
+                >
+                  Rechazar
+                </button>
+                {decision && (
+                  <span className="inline-flex items-center text-sm text-slate-600 pl-2">
+                    Decisión: <strong>{decision === 'approved' ? 'Aprobado' : decision === 'adjusted' ? 'Aprobado con ajustes' : 'Rechazado'}</strong>
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
