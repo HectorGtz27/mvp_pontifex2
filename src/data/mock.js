@@ -30,6 +30,23 @@ export const MOCK_EXTRACTION_RESULT = {
   suggestedType: 'estados_financieros',
 }
 
+/** Key values extracted from all documents via OCR — for spreadsheet view & download */
+export const MOCK_EXTRACTED_SPREADSHEET = [
+  { documento: 'Estados Financieros (últimos 3 años)', campo: 'Total Activo', valor: '4,250,000 MXN', fuente: 'Balance' },
+  { documento: 'Estados Financieros (últimos 3 años)', campo: 'Total Activo Circulante', valor: '1,800,000 MXN', fuente: 'Balance' },
+  { documento: 'Estados Financieros (últimos 3 años)', campo: 'Total Pasivo', valor: '1,200,000 MXN', fuente: 'Balance' },
+  { documento: 'Estados Financieros (últimos 3 años)', campo: 'Capital Contable', valor: '3,050,000 MXN', fuente: 'Balance' },
+  { documento: 'Estados Financieros (últimos 3 años)', campo: 'Venta Neta', valor: '2,100,000 MXN', fuente: 'Estado de Resultados' },
+  { documento: 'Estados Financieros (últimos 3 años)', campo: 'Utilidad Neta', valor: '185,000 MXN', fuente: 'Estado de Resultados' },
+  { documento: 'Estados Financieros (últimos 3 años)', campo: 'EBIT', valor: '220,000 MXN', fuente: 'Estado de Resultados' },
+  { documento: 'Acta Constitutiva', campo: 'Razón social', valor: 'OSC Desarrollo Verde A.C.', fuente: 'OCR' },
+  { documento: 'Acta Constitutiva', campo: 'RFC', valor: 'ODE123456ABC', fuente: 'OCR' },
+  { documento: 'Acta Constitutiva', campo: 'Domicilio Fiscal', valor: 'Av. Ejemplo 123, Col. Centro', fuente: 'OCR' },
+  { documento: 'Constancia de Situación Fiscal', campo: 'Situación fiscal', valor: 'Al corriente', fuente: 'OCR' },
+  { documento: 'Declaraciones (últimos 3 años)', campo: 'Ejercicio 2024', valor: 'Presentada', fuente: 'OCR' },
+  { documento: 'Declaraciones (últimos 3 años)', campo: 'Ejercicio 2023', valor: 'Presentada', fuente: 'OCR' },
+]
+
 export const MOCK_APPLICATION = {
   id: 'SOL-2026-0042',
   applicant: 'OSC Desarrollo Verde A.C.',

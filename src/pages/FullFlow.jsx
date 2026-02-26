@@ -15,10 +15,12 @@ import {
   DOCUMENT_TYPES,
   MOCK_APPLICATION,
   MOCK_EXTRACTION_RESULT,
+  MOCK_EXTRACTED_SPREADSHEET,
   MOCK_SCORE,
   MOCK_KPIS,
   MOCK_RECOMMENDATION,
 } from '../data/mock'
+import { downloadMasterClientXlsx } from '../utils/masterClientXlsx'
 
 const GRADE_COLORS = { A: 'bg-emerald-100 text-emerald-800', B: 'bg-sky-100 text-sky-800', C: 'bg-amber-100 text-amber-800', D: 'bg-red-100 text-red-800' }
 
@@ -365,6 +367,53 @@ export default function FullFlow() {
                   })}
                 </ul>
               </div>
+
+              {/* Spreadsheet: key values extracted via OCR — view + download */}
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <h2 className="font-semibold text-slate-800">Valores clave extraídos (OCR)</h2>
+                    <p className="text-xs text-slate-500 mt-0.5">Datos obtenidos de los documentos subidos; puedes descargar la hoja de cálculo.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const baseName = formData.applicant?.replace(/\s+/g, '_') || 'solicitud'
+                      downloadMasterClientXlsx(
+                        formData,
+                        MOCK_EXTRACTED_SPREADSHEET,
+                        `master_client_pontifex_${baseName}.xlsx`
+                      )
+                    }}
+                    className="px-3 py-2 rounded-lg border border-pontifex-200 bg-pontifex-50 text-pontifex-700 text-sm font-medium hover:bg-pontifex-100"
+                  >
+                    Descargar master_client_pontifex.xlsx
+                  </button>
+                </div>
+                <div className="overflow-x-auto max-h-64 overflow-y-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 sticky top-0">
+                      <tr className="text-left text-slate-600 border-b border-slate-200">
+                        <th className="px-4 py-2 font-medium">Documento</th>
+                        <th className="px-4 py-2 font-medium">Campo</th>
+                        <th className="px-4 py-2 font-medium">Valor</th>
+                        <th className="px-4 py-2 font-medium">Fuente</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {MOCK_EXTRACTED_SPREADSHEET.map((row, i) => (
+                        <tr key={i} className="border-b border-slate-100 hover:bg-slate-50/50">
+                          <td className="px-4 py-2 text-slate-800">{row.documento}</td>
+                          <td className="px-4 py-2 text-slate-700">{row.campo}</td>
+                          <td className="px-4 py-2 font-mono text-slate-800">{row.valor}</td>
+                          <td className="px-4 py-2 text-slate-500">{row.fuente}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
               <div className="flex justify-end">
                 <button
                   type="button"
