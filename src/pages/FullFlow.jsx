@@ -90,7 +90,7 @@ export default function FullFlow() {
     const term = formData.termMonths || '—'
     const chart = buildChartFromRequest(q)
     if (chart)
-      return { reply: `He añadido el gráfico **${chart.title}** al dashboard. Puedes pedir también: "gráfico de KPIs" o "gráfica circular del score".`, chart }
+      return { reply: `Puedo añadir este gráfico al dashboard: **${chart.title}**. ¿Quieres que lo agregue?`, chart }
     if (q.includes('score') || q.includes('clasificación') || q.includes('calificación') || q.includes('riesgo'))
       return { reply: `La clasificación actual es **${MOCK_SCORE.grade}** (${MOCK_SCORE.gradeLabel}). El score compuesto es ${MOCK_SCORE.composite}/100. El desglose es: Liquidez ${MOCK_SCORE.scoreBreakdown[0].score}, Rentabilidad ${MOCK_SCORE.scoreBreakdown[1].score}, Buró ${MOCK_SCORE.scoreBreakdown[2].score}, ESG ${MOCK_SCORE.scoreBreakdown[3].score}. Buró en rango ${MOCK_SCORE.bureauBand}.` }
     if (q.includes('dscr') || q.includes('capacidad de pago'))
@@ -115,9 +115,14 @@ export default function FullFlow() {
     setChatMessages((prev) => [...prev, { role: 'user', content: text }])
     const result = getMockReply(text)
     const reply = typeof result === 'string' ? result : result.reply
-    if (typeof result === 'object' && result.chart)
-      setChartWidgets((prev) => [...prev, result.chart])
-    setChatMessages((prev) => [...prev, { role: 'assistant', content: reply }])
+    const assistantMsg = typeof result === 'object' && result.chart
+      ? { role: 'assistant', content: reply, chart: result.chart }
+      : { role: 'assistant', content: reply }
+    setChatMessages((prev) => [...prev, assistantMsg])
+  }
+
+  const addChartToDashboard = (chart) => {
+    setChartWidgets((prev) => (prev.some((c) => c.id === chart.id) ? prev : [...prev, chart]))
   }
 
   const removeChart = (id) => setChartWidgets((prev) => prev.filter((c) => c.id !== id))
@@ -681,6 +686,51 @@ export default function FullFlow() {
                     }`}
                   >
                     {m.content.split('**').map((part, j) => (j % 2 === 1 ? <strong key={j}>{part}</strong> : part))}
+                    {m.role === 'assistant' && m.chart && (
+                      <div className="mt-2 pt-2 border-t border-slate-200/80 space-y-2">
+                        <div className="w-full min-w-[240px] h-40 rounded-lg overflow-hidden bg-white/80">
+                          {m.chart.type === 'bar' && (
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart data={m.chart.data} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                                <XAxis dataKey="name" tick={{ fontSize: 9 }} />
+                                <YAxis tick={{ fontSize: 9 }} width={24} />
+                                <Tooltip />
+                                <Bar dataKey="value" fill="#237a49" radius={[2, 2, 0, 0]} name="Valor" />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          )}
+                          {m.chart.type === 'pie' && (
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
+                                <Pie
+                                  data={m.chart.data}
+                                  dataKey="value"
+                                  nameKey="name"
+                                  cx="50%"
+                                  cy="50%"
+                                  outerRadius={52}
+                                  label={({ name, value }) => `${name}: ${value}`}
+                                >
+                                  {m.chart.data.map((_, idx) => (
+                                    <Cell key={idx} fill={CHART_COLORS[idx % CHART_COLORS.length]} />
+                                  ))}
+                                </Pie>
+                                <Tooltip />
+                                <Legend wrapperStyle={{ fontSize: 10 }} />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => addChartToDashboard(m.chart)}
+                          disabled={chartWidgets.some((c) => c.id === m.chart.id)}
+                          className="text-xs font-medium px-2.5 py-1.5 rounded-lg bg-pontifex-600 text-white hover:bg-pontifex-700 disabled:opacity-60 disabled:cursor-default disabled:bg-slate-400"
+                        >
+                          {chartWidgets.some((c) => c.id === m.chart.id) ? 'Añadido al dashboard' : 'Añadir al dashboard'}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
