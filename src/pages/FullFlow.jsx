@@ -105,7 +105,7 @@ export default function FullFlow() {
       return { reply: `El score de Buró de Crédito está en el rango **${MOCK_SCORE.bureauBand}** (puntuación ${MOCK_SCORE.bureauScore}). Representa el 15% del score compuesto y en este caso está en nivel de riesgo medio.` }
     if (q.includes('condiciones') || q.includes('covenant'))
       return { reply: `Condiciones sugeridas para la aprobación: ${MOCK_RECOMMENDATION.conditions.map((c, i) => `${i + 1}. ${c}`).join(' ')}` }
-    return { reply: `Tengo acceso a los datos de esta evaluación: solicitante (${applicant}), monto y plazo, score ${MOCK_SCORE.grade}, KPIs y recomendación. Puedes preguntar por score, DSCR, recomendación, monto, KPIs o condiciones. También puedo **generar gráficos**: pide "gráfico del score", "gráfica de KPIs" o "gráfica circular del score".` }
+    return { reply: `Tengo acceso a los datos de esta evaluación: solicitante (${applicant}), monto y plazo, score ${MOCK_SCORE.grade}, KPIs y recomendación. Puedes preguntar por score, DSCR, recomendación, monto, KPIs o condiciones. También puedo **generar gráficos**` }
   }
 
   const sendChatMessage = () => {
