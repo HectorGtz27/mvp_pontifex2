@@ -1,5 +1,17 @@
 import { useState } from 'react'
 import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+} from 'recharts'
+import {
   DOCUMENT_TYPES,
   MOCK_APPLICATION,
   MOCK_EXTRACTION_RESULT,
@@ -51,6 +63,24 @@ export default function FullFlow() {
 
   const [chatMessages, setChatMessages] = useState([])
   const [chatInput, setChatInput] = useState('')
+  const [chartWidgets, setChartWidgets] = useState([])
+
+  const buildChartFromRequest = (q) => {
+    const id = `chart-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    const scoreData = MOCK_SCORE.scoreBreakdown.map((b) => ({ name: b.name, value: b.score }))
+    const kpiData = MOCK_KPIS.map((k) => ({
+      name: k.name.length > 12 ? k.name.slice(0, 10) + '…' : k.name,
+      value: k.format === 'percent' ? (k.value * 100) : (typeof k.value === 'number' ? k.value : 0),
+    }))
+    if ((q.includes('gráfico') || q.includes('grafico') || q.includes('gráfica') || q.includes('grafica') || q.includes('chart') || q.includes('graph')) && (q.includes('score') || q.includes('desglose') || q.includes('clasificación'))) {
+      if (q.includes('pie') || q.includes('circular') || q.includes('pastel'))
+        return { id, type: 'pie', title: 'Desglose del score', data: scoreData }
+      return { id, type: 'bar', title: 'Desglose del score (Liquidez, Rentabilidad, Buró, ESG)', data: scoreData }
+    }
+    if ((q.includes('gráfico') || q.includes('grafico') || q.includes('gráfica') || q.includes('grafica') || q.includes('chart')) && (q.includes('kpi') || q.includes('indicador')))
+      return { id, type: 'bar', title: 'Indicadores financieros', data: kpiData }
+    return null
+  }
 
   const getMockReply = (question) => {
     const q = question.toLowerCase()
@@ -58,21 +88,24 @@ export default function FullFlow() {
     const amount = formData.requestedAmount ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(Number(formData.requestedAmount)) : 'el monto solicitado'
     const purpose = formData.purpose || 'el propósito indicado'
     const term = formData.termMonths || '—'
+    const chart = buildChartFromRequest(q)
+    if (chart)
+      return { reply: `He añadido el gráfico **${chart.title}** al dashboard. Puedes pedir también: "gráfico de KPIs" o "gráfica circular del score".`, chart }
     if (q.includes('score') || q.includes('clasificación') || q.includes('calificación') || q.includes('riesgo'))
-      return `La clasificación actual es **${MOCK_SCORE.grade}** (${MOCK_SCORE.gradeLabel}). El score compuesto es ${MOCK_SCORE.composite}/100. El desglose es: Liquidez ${MOCK_SCORE.scoreBreakdown[0].score}, Rentabilidad ${MOCK_SCORE.scoreBreakdown[1].score}, Buró ${MOCK_SCORE.scoreBreakdown[2].score}, ESG ${MOCK_SCORE.scoreBreakdown[3].score}. Buró en rango ${MOCK_SCORE.bureauBand}.`
+      return { reply: `La clasificación actual es **${MOCK_SCORE.grade}** (${MOCK_SCORE.gradeLabel}). El score compuesto es ${MOCK_SCORE.composite}/100. El desglose es: Liquidez ${MOCK_SCORE.scoreBreakdown[0].score}, Rentabilidad ${MOCK_SCORE.scoreBreakdown[1].score}, Buró ${MOCK_SCORE.scoreBreakdown[2].score}, ESG ${MOCK_SCORE.scoreBreakdown[3].score}. Buró en rango ${MOCK_SCORE.bureauBand}.` }
     if (q.includes('dscr') || q.includes('capacidad de pago'))
-      return `El DSCR (Debt Service Coverage Ratio) de esta solicitud es **${MOCK_KPIS.find(k => k.name === 'DSCR')?.value ?? '—'}**. El benchmark mínimo es 1.2; está por encima, lo que indica capacidad adecuada para cubrir el servicio de la deuda.`
+      return { reply: `El DSCR (Debt Service Coverage Ratio) de esta solicitud es **${MOCK_KPIS.find(k => k.name === 'DSCR')?.value ?? '—'}**. El benchmark mínimo es 1.2; está por encima, lo que indica capacidad adecuada para cubrir el servicio de la deuda.` }
     if (q.includes('recomendación') || q.includes('recomienda') || q.includes('aprobar'))
-      return `El sistema recomienda **aprobar con condiciones**. Monto sugerido: ${new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(MOCK_RECOMMENDATION.suggestedAmount)}, plazo ${MOCK_RECOMMENDATION.suggestedTermMonths} meses, tasa ${MOCK_RECOMMENDATION.suggestedRate}. Condiciones: ${MOCK_RECOMMENDATION.conditions.join(' ')} Nota del analista: "${MOCK_RECOMMENDATION.analystNotes}"`
+      return { reply: `El sistema recomienda **aprobar con condiciones**. Monto sugerido: ${new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(MOCK_RECOMMENDATION.suggestedAmount)}, plazo ${MOCK_RECOMMENDATION.suggestedTermMonths} meses, tasa ${MOCK_RECOMMENDATION.suggestedRate}. Condiciones: ${MOCK_RECOMMENDATION.conditions.join(' ')} Nota del analista: "${MOCK_RECOMMENDATION.analystNotes}"` }
     if (q.includes('monto') || q.includes('cantidad') || q.includes('solicit'))
-      return `${applicant} solicita **${amount}** a **${term}** meses para: ${purpose}. El monto sugerido por el sistema es ${new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(MOCK_RECOMMENDATION.suggestedAmount)}.`
+      return { reply: `${applicant} solicita **${amount}** a **${term}** meses para: ${purpose}. El monto sugerido por el sistema es ${new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(MOCK_RECOMMENDATION.suggestedAmount)}.` }
     if (q.includes('kpi') || q.includes('indicador') || q.includes('ratio') || q.includes('roe') || q.includes('liquidez') || q.includes('deuda'))
-      return `Indicadores actuales: Razón Circulante ${MOCK_KPIS.find(k => k.name === 'Razón Circulante')?.value ?? '—'}, DSCR ${MOCK_KPIS.find(k => k.name === 'DSCR')?.value ?? '—'}, Deuda/EBIT ${MOCK_KPIS.find(k => k.name === 'Deuda/EBIT')?.value ?? '—'}, ROE ${(MOCK_KPIS.find(k => k.name === 'ROE')?.value * 100)?.toFixed(2) ?? '—'}%, Margen Neto ${(MOCK_KPIS.find(k => k.name === 'Margen Neto')?.value * 100)?.toFixed(2) ?? '—'}%. Todos cumplen benchmark excepto donde se indica.`
+      return { reply: `Indicadores actuales: Razón Circulante ${MOCK_KPIS.find(k => k.name === 'Razón Circulante')?.value ?? '—'}, DSCR ${MOCK_KPIS.find(k => k.name === 'DSCR')?.value ?? '—'}, Deuda/EBIT ${MOCK_KPIS.find(k => k.name === 'Deuda/EBIT')?.value ?? '—'}, ROE ${(MOCK_KPIS.find(k => k.name === 'ROE')?.value * 100)?.toFixed(2) ?? '—'}%, Margen Neto ${(MOCK_KPIS.find(k => k.name === 'Margen Neto')?.value * 100)?.toFixed(2) ?? '—'}%. Todos cumplen benchmark excepto donde se indica.` }
     if (q.includes('buró') || q.includes('buro'))
-      return `El score de Buró de Crédito está en el rango **${MOCK_SCORE.bureauBand}** (puntuación ${MOCK_SCORE.bureauScore}). Representa el 15% del score compuesto y en este caso está en nivel de riesgo medio.`
+      return { reply: `El score de Buró de Crédito está en el rango **${MOCK_SCORE.bureauBand}** (puntuación ${MOCK_SCORE.bureauScore}). Representa el 15% del score compuesto y en este caso está en nivel de riesgo medio.` }
     if (q.includes('condiciones') || q.includes('covenant'))
-      return `Condiciones sugeridas para la aprobación: ${MOCK_RECOMMENDATION.conditions.map((c, i) => `${i + 1}. ${c}`).join(' ')}`
-    return `Tengo acceso a los datos de esta evaluación: solicitante (${applicant}), monto y plazo, score ${MOCK_SCORE.grade}, KPIs y recomendación. ¿Qué te gustaría saber en concreto? Por ejemplo: score, DSCR, recomendación, monto, KPIs o condiciones.`
+      return { reply: `Condiciones sugeridas para la aprobación: ${MOCK_RECOMMENDATION.conditions.map((c, i) => `${i + 1}. ${c}`).join(' ')}` }
+    return { reply: `Tengo acceso a los datos de esta evaluación: solicitante (${applicant}), monto y plazo, score ${MOCK_SCORE.grade}, KPIs y recomendación. Puedes preguntar por score, DSCR, recomendación, monto, KPIs o condiciones. También puedo **generar gráficos**: pide "gráfico del score", "gráfica de KPIs" o "gráfica circular del score".` }
   }
 
   const sendChatMessage = () => {
@@ -80,9 +113,16 @@ export default function FullFlow() {
     if (!text) return
     setChatInput('')
     setChatMessages((prev) => [...prev, { role: 'user', content: text }])
-    const reply = getMockReply(text)
+    const result = getMockReply(text)
+    const reply = typeof result === 'string' ? result : result.reply
+    if (typeof result === 'object' && result.chart)
+      setChartWidgets((prev) => [...prev, result.chart])
     setChatMessages((prev) => [...prev, { role: 'assistant', content: reply }])
   }
+
+  const removeChart = (id) => setChartWidgets((prev) => prev.filter((c) => c.id !== id))
+
+  const CHART_COLORS = ['#237a49', '#2d9d6b', '#54b57d', '#8bd1a8']
 
   const resetFlow = () => {
     setCurrentStep(0)
@@ -93,6 +133,7 @@ export default function FullFlow() {
     setAnalystNotes('')
     setChatMessages([])
     setChatInput('')
+    setChartWidgets([])
   }
 
   return (
@@ -555,6 +596,63 @@ export default function FullFlow() {
                 )}
               </div>
             </div>
+
+            {/* Gráficos generados por el chatbot */}
+            {chartWidgets.length > 0 && (
+              <div className="lg:col-span-3">
+                <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Gráficos generados</h2>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  {chartWidgets.map((widget) => (
+                    <div key={widget.id} className="bg-white rounded-xl border border-slate-200 p-4 relative">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-sm font-medium text-slate-800">{widget.title}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeChart(widget.id)}
+                          className="text-slate-400 hover:text-red-600 text-xs px-2 py-1 rounded"
+                          aria-label="Quitar gráfico"
+                        >
+                          Quitar
+                        </button>
+                      </div>
+                      <div className="h-64">
+                        {widget.type === 'bar' && (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={widget.data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                              <YAxis tick={{ fontSize: 11 }} />
+                              <Tooltip />
+                              <Bar dataKey="value" fill="#237a49" radius={[4, 4, 0, 0]} name="Valor" />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        )}
+                        {widget.type === 'pie' && (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie
+                                data={widget.data}
+                                dataKey="value"
+                                nameKey="name"
+                                cx="50%"
+                                cy="50%"
+                                outerRadius={80}
+                                label={({ name, value }) => `${name}: ${value}`}
+                              >
+                                {widget.data.map((_, i) => (
+                                  <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                                ))}
+                              </Pie>
+                              <Tooltip />
+                              <Legend />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           </div>
 
