@@ -558,6 +558,60 @@ export default function FullFlow() {
               </div>
             </div>
 
+            {/* Gráficos generados por el chatbot (above Decisión) */}
+            {chartWidgets.length > 0 && (
+              <div className="lg:col-span-3 grid sm:grid-cols-2 gap-4">
+                {chartWidgets.map((widget) => (
+                  <div key={widget.id} className="bg-white rounded-xl border border-slate-200 p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm font-medium text-slate-800">{widget.title}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeChart(widget.id)}
+                        className="text-slate-400 hover:text-red-600 text-xs px-2 py-1 rounded"
+                        aria-label="Quitar gráfico"
+                      >
+                        Quitar
+                      </button>
+                    </div>
+                    <div className="h-64">
+                      {widget.type === 'bar' && (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={widget.data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                            <YAxis tick={{ fontSize: 11 }} />
+                            <Tooltip />
+                            <Bar dataKey="value" fill="#237a49" radius={[4, 4, 0, 0]} name="Valor" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      )}
+                      {widget.type === 'pie' && (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={widget.data}
+                              dataKey="value"
+                              nameKey="name"
+                              cx="50%"
+                              cy="50%"
+                              outerRadius={80}
+                              label={({ name, value }) => `${name}: ${value}`}
+                            >
+                              {widget.data.map((_, i) => (
+                                <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip />
+                            <Legend />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Decisión - full width */}
             <div className="lg:col-span-3 bg-white rounded-xl border border-slate-200 p-5">
               <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Decisión del analista</h2>
@@ -596,63 +650,6 @@ export default function FullFlow() {
                 )}
               </div>
             </div>
-
-            {/* Gráficos generados por el chatbot */}
-            {chartWidgets.length > 0 && (
-              <div className="lg:col-span-3">
-                <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Gráficos generados</h2>
-                <div className="grid sm:grid-cols-2 gap-4">
-                  {chartWidgets.map((widget) => (
-                    <div key={widget.id} className="bg-white rounded-xl border border-slate-200 p-4 relative">
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="text-sm font-medium text-slate-800">{widget.title}</span>
-                        <button
-                          type="button"
-                          onClick={() => removeChart(widget.id)}
-                          className="text-slate-400 hover:text-red-600 text-xs px-2 py-1 rounded"
-                          aria-label="Quitar gráfico"
-                        >
-                          Quitar
-                        </button>
-                      </div>
-                      <div className="h-64">
-                        {widget.type === 'bar' && (
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={widget.data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                              <YAxis tick={{ fontSize: 11 }} />
-                              <Tooltip />
-                              <Bar dataKey="value" fill="#237a49" radius={[4, 4, 0, 0]} name="Valor" />
-                            </BarChart>
-                          </ResponsiveContainer>
-                        )}
-                        {widget.type === 'pie' && (
-                          <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                              <Pie
-                                data={widget.data}
-                                dataKey="value"
-                                nameKey="name"
-                                cx="50%"
-                                cy="50%"
-                                outerRadius={80}
-                                label={({ name, value }) => `${name}: ${value}`}
-                              >
-                                {widget.data.map((_, i) => (
-                                  <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                                ))}
-                              </Pie>
-                              <Tooltip />
-                              <Legend />
-                            </PieChart>
-                          </ResponsiveContainer>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
           </div>
 
