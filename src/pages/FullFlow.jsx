@@ -49,6 +49,41 @@ export default function FullFlow() {
 
   const updateForm = (field, value) => setFormData((prev) => ({ ...prev, [field]: value }))
 
+  const [chatMessages, setChatMessages] = useState([])
+  const [chatInput, setChatInput] = useState('')
+
+  const getMockReply = (question) => {
+    const q = question.toLowerCase()
+    const applicant = formData.applicant || 'el solicitante'
+    const amount = formData.requestedAmount ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(Number(formData.requestedAmount)) : 'el monto solicitado'
+    const purpose = formData.purpose || 'el propósito indicado'
+    const term = formData.termMonths || '—'
+    if (q.includes('score') || q.includes('clasificación') || q.includes('calificación') || q.includes('riesgo'))
+      return `La clasificación actual es **${MOCK_SCORE.grade}** (${MOCK_SCORE.gradeLabel}). El score compuesto es ${MOCK_SCORE.composite}/100. El desglose es: Liquidez ${MOCK_SCORE.scoreBreakdown[0].score}, Rentabilidad ${MOCK_SCORE.scoreBreakdown[1].score}, Buró ${MOCK_SCORE.scoreBreakdown[2].score}, ESG ${MOCK_SCORE.scoreBreakdown[3].score}. Buró en rango ${MOCK_SCORE.bureauBand}.`
+    if (q.includes('dscr') || q.includes('capacidad de pago'))
+      return `El DSCR (Debt Service Coverage Ratio) de esta solicitud es **${MOCK_KPIS.find(k => k.name === 'DSCR')?.value ?? '—'}**. El benchmark mínimo es 1.2; está por encima, lo que indica capacidad adecuada para cubrir el servicio de la deuda.`
+    if (q.includes('recomendación') || q.includes('recomienda') || q.includes('aprobar'))
+      return `El sistema recomienda **aprobar con condiciones**. Monto sugerido: ${new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(MOCK_RECOMMENDATION.suggestedAmount)}, plazo ${MOCK_RECOMMENDATION.suggestedTermMonths} meses, tasa ${MOCK_RECOMMENDATION.suggestedRate}. Condiciones: ${MOCK_RECOMMENDATION.conditions.join(' ')} Nota del analista: "${MOCK_RECOMMENDATION.analystNotes}"`
+    if (q.includes('monto') || q.includes('cantidad') || q.includes('solicit'))
+      return `${applicant} solicita **${amount}** a **${term}** meses para: ${purpose}. El monto sugerido por el sistema es ${new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(MOCK_RECOMMENDATION.suggestedAmount)}.`
+    if (q.includes('kpi') || q.includes('indicador') || q.includes('ratio') || q.includes('roe') || q.includes('liquidez') || q.includes('deuda'))
+      return `Indicadores actuales: Razón Circulante ${MOCK_KPIS.find(k => k.name === 'Razón Circulante')?.value ?? '—'}, DSCR ${MOCK_KPIS.find(k => k.name === 'DSCR')?.value ?? '—'}, Deuda/EBIT ${MOCK_KPIS.find(k => k.name === 'Deuda/EBIT')?.value ?? '—'}, ROE ${(MOCK_KPIS.find(k => k.name === 'ROE')?.value * 100)?.toFixed(2) ?? '—'}%, Margen Neto ${(MOCK_KPIS.find(k => k.name === 'Margen Neto')?.value * 100)?.toFixed(2) ?? '—'}%. Todos cumplen benchmark excepto donde se indica.`
+    if (q.includes('buró') || q.includes('buro'))
+      return `El score de Buró de Crédito está en el rango **${MOCK_SCORE.bureauBand}** (puntuación ${MOCK_SCORE.bureauScore}). Representa el 15% del score compuesto y en este caso está en nivel de riesgo medio.`
+    if (q.includes('condiciones') || q.includes('covenant'))
+      return `Condiciones sugeridas para la aprobación: ${MOCK_RECOMMENDATION.conditions.map((c, i) => `${i + 1}. ${c}`).join(' ')}`
+    return `Tengo acceso a los datos de esta evaluación: solicitante (${applicant}), monto y plazo, score ${MOCK_SCORE.grade}, KPIs y recomendación. ¿Qué te gustaría saber en concreto? Por ejemplo: score, DSCR, recomendación, monto, KPIs o condiciones.`
+  }
+
+  const sendChatMessage = () => {
+    const text = chatInput.trim()
+    if (!text) return
+    setChatInput('')
+    setChatMessages((prev) => [...prev, { role: 'user', content: text }])
+    const reply = getMockReply(text)
+    setChatMessages((prev) => [...prev, { role: 'assistant', content: reply }])
+  }
+
   const resetFlow = () => {
     setCurrentStep(0)
     setFormData(INITIAL_FORM)
@@ -56,6 +91,8 @@ export default function FullFlow() {
     setDocumentsComplete(false)
     setDecision(null)
     setAnalystNotes('')
+    setChatMessages([])
+    setChatInput('')
   }
 
   return (
@@ -364,9 +401,11 @@ export default function FullFlow() {
         </div>
       )}
 
-      {/* ========== STEP 2: Dashboard de evaluación ========== */}
+      {/* ========== STEP 2: Dashboard de evaluación + Chatbot ========== */}
       {currentStep === 2 && (
-        <div className="space-y-6">
+        <div className="grid lg:grid-cols-[1fr_360px] gap-6">
+          {/* Dashboard column */}
+          <div className="space-y-6 min-w-0">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-slate-900">Dashboard de evaluación</h1>
@@ -514,6 +553,60 @@ export default function FullFlow() {
                     Decisión: <strong>{decision === 'approved' ? 'Aprobado' : decision === 'adjusted' ? 'Aprobado con ajustes' : 'Rechazado'}</strong>
                   </span>
                 )}
+              </div>
+            </div>
+          </div>
+          </div>
+
+          {/* Chatbot column */}
+          <div className="bg-white rounded-xl border border-slate-200 flex flex-col h-[calc(100vh-12rem)] min-h-[420px] lg:sticky lg:top-24">
+            <div className="px-4 py-3 border-b border-slate-200 flex items-center gap-2">
+              <span className="w-8 h-8 rounded-lg bg-pontifex-100 text-pontifex-700 flex items-center justify-center text-sm">💬</span>
+              <div>
+                <h2 className="font-semibold text-slate-900">Pregunta sobre los datos</h2>
+                <p className="text-xs text-slate-500">Respuestas basadas en esta evaluación</p>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {chatMessages.length === 0 && (
+                <p className="text-sm text-slate-500 text-center py-6">
+                  Escribe una pregunta sobre el solicitante, el score, los KPIs, la recomendación, etc.
+                </p>
+              )}
+              {chatMessages.map((m, i) => (
+                <div
+                  key={i}
+                  className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`max-w-[85%] rounded-xl px-3 py-2 text-sm ${
+                      m.role === 'user'
+                        ? 'bg-pontifex-600 text-white'
+                        : 'bg-slate-100 text-slate-800'
+                    }`}
+                  >
+                    {m.content.split('**').map((part, j) => (j % 2 === 1 ? <strong key={j}>{part}</strong> : part))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="p-3 border-t border-slate-200">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendChatMessage()}
+                  placeholder="Ej. ¿Cuál es el DSCR? ¿Por qué score B?"
+                  className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500"
+                />
+                <button
+                  type="button"
+                  onClick={sendChatMessage}
+                  className="px-4 py-2 bg-pontifex-600 text-white rounded-lg font-medium text-sm hover:bg-pontifex-700 shrink-0"
+                >
+                  Enviar
+                </button>
               </div>
             </div>
           </div>
