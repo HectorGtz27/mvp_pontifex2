@@ -1,10 +1,64 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { DOCUMENT_TYPES, MOCK_APPLICATION, MOCK_EXTRACTION_RESULT } from '../data/mock'
 
 export default function DocumentUpload() {
   const [step, setStep] = useState('checklist') // checklist | upload | extraction
   const [selectedType, setSelectedType] = useState(null)
   const [dragOver, setDragOver] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [uploadResult, setUploadResult] = useState(null)
+  const [uploadError, setUploadError] = useState(null)
+  const fileInputRef = useRef(null)
+
+  console.log(`[DocumentUpload] selectedType actual:`, selectedType)
+
+  const handleFileUpload = async (file) => {
+    if (!file) return
+
+    console.log(`\n[DocumentUpload] ▶ INICIANDO handleFileUpload()`)
+    console.log(`[DocumentUpload] File:`, file.name, `(${(file.size / 1024).toFixed(2)} KB)`)
+    console.log(`[DocumentUpload] selectedType:`, selectedType)
+    console.log(`[DocumentUpload] selectedType?.id:`, selectedType?.id)
+
+    setUploading(true)
+    setUploadError(null)
+    setUploadResult(null)
+
+    const formData = new FormData()
+    formData.append('file', file)
+
+    console.log(`[DocumentUpload] ▶ Agregando documentTypeId a FormData...`)
+    if (selectedType?.id) {
+      formData.append('documentTypeId', selectedType.id)
+      console.log(`[DocumentUpload] ✓ documentTypeId agregado: "${selectedType.id}"`)
+    } else {
+      console.error(`[DocumentUpload] ✗ selectedType o selectedType.id está vacío`)
+    }
+
+    console.log(`[DocumentUpload] ▶ Enviando fetch a /api/upload...`)
+    try {
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+
+      console.log(`[DocumentUpload] ✓ Response recibida:`, data)
+
+      if (!res.ok || !data.success) {
+        console.error(`[DocumentUpload] ✗ Error en respuesta:`, data.error)
+        setUploadError(data.error || 'Error al subir el archivo.')
+      } else {
+        console.log(`[DocumentUpload] ✓ Upload exitoso`)
+        setUploadResult(data)
+      }
+    } catch (err) {
+      console.error(`[DocumentUpload] ✗ Error de conexión:`, err.message)
+      setUploadError('Error de conexión con el servidor.')
+    } finally {
+      setUploading(false)
+    }
+  }
 
   const docStatus = (id) => {
     if (id === 'estados_financieros') return { status: 'validated', fileName: 'Estados_Financieros_2024.pdf' }
@@ -77,33 +131,96 @@ export default function DocumentUpload() {
               <h2 className="font-semibold text-slate-900">Subir: {selectedType?.label}</h2>
               <button
                 type="button"
-                onClick={() => setStep('checklist')}
+                onClick={() => { setStep('checklist'); setUploadResult(null); setUploadError(null) }}
                 className="text-sm text-slate-500 hover:text-slate-700"
               >
                 ← Volver al listado
               </button>
             </div>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                console.log(`\n[FileInput] onChange triggered`)
+                console.log(`[FileInput] file:`, file?.name)
+                console.log(`[FileInput] selectedType:`, selectedType)
+                console.log(`[FileInput] selectedType?.id:`, selectedType?.id)
+                if (file && selectedType?.id) {
+                  handleFileUpload(file)
+                } else {
+                  console.error(`[FileInput] ✗ No se puede subir. file="${file?.name}", selectedType.id="${selectedType?.id}"`)
+                }
+              }}
+            />
+
             <div
               onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
               onDragLeave={() => setDragOver(false)}
               onDrop={(e) => {
                 e.preventDefault()
                 setDragOver(false)
-                setStep('extraction')
+                const file = e.dataTransfer.files?.[0]
+                console.log(`\n[DragDrop] onDrop triggered`)
+                console.log(`[DragDrop] file:`, file?.name)
+                console.log(`[DragDrop] selectedType:`, selectedType)
+                console.log(`[DragDrop] selectedType?.id:`, selectedType?.id)
+                if (file && selectedType?.id) {
+                  handleFileUpload(file)
+                } else {
+                  console.error(`[DragDrop] ✗ No se puede subir. file="${file?.name}", selectedType.id="${selectedType?.id}"`)
+                }
               }}
               className={`border-2 border-dashed rounded-xl p-12 text-center transition-colors ${
                 dragOver ? 'border-pontifex-400 bg-pontifex-50' : 'border-slate-200 bg-slate-50'
               }`}
             >
-              <p className="text-slate-600 mb-4">Arrastra aquí el PDF o haz clic para seleccionar</p>
-              <button
-                type="button"
-                onClick={() => setStep('extraction')}
-                className="px-4 py-2 bg-pontifex-600 text-white rounded-lg font-medium hover:bg-pontifex-700"
-              >
-                Simular subida (mock)
-              </button>
+              {uploading ? (
+                <div className="flex flex-col items-center gap-3">
+                  <svg className="animate-spin h-8 w-8 text-pontifex-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  <p className="text-slate-600">Subiendo archivo a S3...</p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-slate-600 mb-4">Arrastra aquí el archivo o haz clic para seleccionar</p>
+                  <p className="text-xs text-slate-400 mb-4">Formatos permitidos: PDF, JPG, JPEG, PNG · Máximo 10 MB</p>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-4 py-2 bg-pontifex-600 text-white rounded-lg font-medium hover:bg-pontifex-700"
+                  >
+                    Seleccionar archivo
+                  </button>
+                </>
+              )}
             </div>
+
+            {uploadError && (
+              <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                {uploadError}
+              </div>
+            )}
+
+            {uploadResult && (
+              <div className="mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-lg space-y-2">
+                <p className="text-emerald-800 font-medium">Archivo subido exitosamente</p>
+                <p className="text-sm text-emerald-700">Nombre: {uploadResult.fileName}</p>
+                <p className="text-sm text-emerald-700 break-all">URL S3: {uploadResult.s3Url}</p>
+                <button
+                  type="button"
+                  onClick={() => { setStep('checklist'); setUploadResult(null) }}
+                  className="mt-2 px-4 py-2 bg-pontifex-600 text-white rounded-lg font-medium hover:bg-pontifex-700 text-sm"
+                >
+                  Volver al listado
+                </button>
+              </div>
+            )}
           </div>
         </>
       )}

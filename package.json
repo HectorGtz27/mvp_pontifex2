@@ -5,14 +5,26 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:server": "node server/index.cjs",
+    "db:seed": "node server/seed.cjs",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.999.0",
+    "@aws-sdk/client-textract": "^3.999.0",
+    "@prisma/client": "^6.19.2",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "multer": "^2.0.2",
+    "pg": "^8.19.0",
+    "prisma": "^6.19.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.22.0",
     "recharts": "^2.12.0",
+    "uuid": "^13.0.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

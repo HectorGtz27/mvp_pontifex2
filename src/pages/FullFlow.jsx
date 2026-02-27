@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import {
   BarChart,
   Bar,
@@ -56,6 +56,36 @@ export default function FullFlow() {
   const [documentsComplete, setDocumentsComplete] = useState(false)
   const [decision, setDecision] = useState(null)
   const [analystNotes, setAnalystNotes] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [uploadResult, setUploadResult] = useState(null)
+  const [uploadError, setUploadError] = useState(null)
+  const [dragOver, setDragOver] = useState(false)
+  const fileInputRef = useRef(null)
+
+  const handleFileUpload = async (file) => {
+    if (!file) return
+    setUploading(true)
+    setUploadError(null)
+    setUploadResult(null)
+    const formDataUpload = new FormData()
+    formDataUpload.append('file', file)
+    if (selectedDocType?.id) {
+      formDataUpload.append('documentTypeId', selectedDocType.id)
+    }
+    try {
+      const res = await fetch('/api/upload', { method: 'POST', body: formDataUpload })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        setUploadError(data.error || 'Error al subir el archivo.')
+      } else {
+        setUploadResult(data)
+      }
+    } catch (err) {
+      setUploadError('Error de conexión con el servidor.')
+    } finally {
+      setUploading(false)
+    }
+  }
 
   const formComplete = formData.applicant.trim() && formData.requestedAmount && formData.termMonths && formData.purpose.trim()
   const canGoToStep1 = formComplete
@@ -431,20 +461,76 @@ export default function FullFlow() {
               <div className="bg-white rounded-xl border border-slate-200 p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="font-semibold text-slate-900">Subir: {selectedDocType?.label}</h2>
-                  <button type="button" onClick={() => setDocSubStep('checklist')} className="text-sm text-slate-500 hover:text-slate-700">← Volver</button>
+                  <button type="button" onClick={() => { setDocSubStep('checklist'); setUploadResult(null); setUploadError(null) }} className="text-sm text-slate-500 hover:text-slate-700">← Volver</button>
                 </div>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) handleFileUpload(file)
+                  }}
+                />
+
                 <div
-                  className="border-2 border-dashed border-slate-200 rounded-xl p-12 text-center bg-slate-50"
+                  onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    setDragOver(false)
+                    const file = e.dataTransfer.files?.[0]
+                    if (file) handleFileUpload(file)
+                  }}
+                  className={`border-2 border-dashed rounded-xl p-12 text-center transition-colors ${
+                    dragOver ? 'border-pontifex-400 bg-pontifex-50' : 'border-slate-200 bg-slate-50'
+                  }`}
                 >
-                  <p className="text-slate-600 mb-4">Arrastra el PDF aquí o haz clic para seleccionar</p>
-                  <button
-                    type="button"
-                    onClick={() => setDocSubStep('extraction')}
-                    className="px-4 py-2 bg-pontifex-600 text-white rounded-lg font-medium hover:bg-pontifex-700"
-                  >
-                    Simular subida
-                  </button>
+                  {uploading ? (
+                    <div className="flex flex-col items-center gap-3">
+                      <svg className="animate-spin h-8 w-8 text-pontifex-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      <p className="text-slate-600">Subiendo archivo a S3...</p>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-slate-600 mb-4">Arrastra el archivo aquí o haz clic para seleccionar</p>
+                      <p className="text-xs text-slate-400 mb-4">Formatos: PDF, JPG, JPEG, PNG · Máx 10 MB</p>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-4 py-2 bg-pontifex-600 text-white rounded-lg font-medium hover:bg-pontifex-700"
+                      >
+                        Seleccionar archivo
+                      </button>
+                    </>
+                  )}
                 </div>
+
+                {uploadError && (
+                  <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                    {uploadError}
+                  </div>
+                )}
+
+                {uploadResult && (
+                  <div className="mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-lg space-y-2">
+                    <p className="text-emerald-800 font-medium">Archivo subido exitosamente a S3</p>
+                    <p className="text-sm text-emerald-700">Nombre: {uploadResult.fileName}</p>
+                    <p className="text-sm text-emerald-700 break-all">URL: {uploadResult.s3Url}</p>
+                    <button
+                      type="button"
+                      onClick={() => { setDocSubStep('checklist'); setUploadResult(null) }}
+                      className="mt-2 px-4 py-2 bg-pontifex-600 text-white rounded-lg font-medium hover:bg-pontifex-700 text-sm"
+                    >
+                      Volver al listado
+                    </button>
+                  </div>
+                )}
               </div>
             </>
           )}

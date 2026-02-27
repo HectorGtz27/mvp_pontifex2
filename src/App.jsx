@@ -1,5 +1,6 @@
 import { Routes, Route, Link, Navigate } from 'react-router-dom'
 import FullFlow from './pages/FullFlow'
+import Landing from './pages/Landing'
 
 function App() {
   return (
@@ -15,7 +16,8 @@ function App() {
       </header>
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-8">
         <Routes>
-          <Route path="/" element={<FullFlow />} />
+          <Route path="/" element={<Landing />} />
+          <Route path="/solicitud" element={<FullFlow />} />
           <Route path="/documentos" element={<Navigate to="/" replace />} />
           <Route path="/decision" element={<Navigate to="/" replace />} />
           <Route path="/covenants" element={<Navigate to="/" replace />} />
