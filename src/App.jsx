@@ -10,7 +10,6 @@ function App() {
             <div className="w-8 h-8 rounded-md bg-pontifex-600 flex items-center justify-center text-white font-semibold text-sm">P</div>
             <span className="font-semibold text-slate-800">Pontifex</span>
           </Link>
-          <span className="text-sm text-slate-500">Flujo: Lista → Datos → Documentos → Decisión</span>
         </div>
       </header>
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-8">
@@ -22,7 +21,7 @@ function App() {
         </Routes>
       </main>
       <footer className="border-t border-slate-200 py-4 text-center text-slate-500 text-sm">
-        Pontifex — Mockup · Financiación del desarrollo sostenible
+        Pontifex Financiación del desarrollo sostenible
       </footer>
     </div>
   )
