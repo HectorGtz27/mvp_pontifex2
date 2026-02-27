@@ -187,6 +187,12 @@ export default function FullFlow() {
     setCurrentStep(1)
   }
 
+  const removeSolicitud = (id) => {
+    if (!window.confirm('¿Eliminar esta solicitud? Esta acción no se puede deshacer.')) return
+    setSolicitudes((prev) => prev.filter((s) => s.id !== id))
+    if (currentSolicitudId === id) goToList()
+  }
+
   const saveAndGoToDocuments = () => {
     if (!formComplete) return
     if (!currentSolicitudId) {
@@ -281,7 +287,7 @@ export default function FullFlow() {
                   <th className="px-4 py-3 font-medium">Plazo</th>
                   <th className="px-4 py-3 font-medium">Estado</th>
                   <th className="px-4 py-3 font-medium">Fecha</th>
-                  <th className="px-4 py-3 font-medium w-24">Acción</th>
+                  <th className="px-4 py-3 font-medium">Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -304,6 +310,7 @@ export default function FullFlow() {
                     </td>
                     <td className="px-4 py-3 text-slate-500">{s.createdAt}</td>
                     <td className="px-4 py-3">
+                      <span className="inline-flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => openSolicitud(s)}
@@ -311,6 +318,15 @@ export default function FullFlow() {
                       >
                         Abrir
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => removeSolicitud(s.id)}
+                        className="text-red-600 hover:text-red-700 font-medium text-xs"
+                        title="Eliminar solicitud"
+                      >
+                        Eliminar
+                      </button>
+                      </span>
                     </td>
                   </tr>
                 ))}
