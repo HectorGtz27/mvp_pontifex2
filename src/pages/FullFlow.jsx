@@ -16,6 +16,7 @@ import {
   MOCK_APPLICATION,
   MOCK_EXTRACTION_RESULT,
   MOCK_EXTRACTED_SPREADSHEET,
+  MOCK_SOLICITUDES,
   MOCK_SCORE,
   MOCK_KPIS,
   MOCK_RECOMMENDATION,
@@ -25,9 +26,10 @@ import { downloadMasterClientXlsx } from '../utils/masterClientXlsx'
 const GRADE_COLORS = { A: 'bg-emerald-100 text-emerald-800', B: 'bg-sky-100 text-sky-800', C: 'bg-amber-100 text-amber-800', D: 'bg-red-100 text-red-800' }
 
 const STEPS = [
-  { id: 0, label: 'Datos de la solicitud', short: 'Datos' },
-  { id: 1, label: 'Documentos', short: 'Documentos' },
-  { id: 2, label: 'Evaluación y decisión', short: 'Decisión' },
+  { id: 0, label: 'Solicitudes', short: 'Lista' },
+  { id: 1, label: 'Datos de la solicitud', short: 'Datos' },
+  { id: 2, label: 'Documentos', short: 'Documentos' },
+  { id: 3, label: 'Evaluación y decisión', short: 'Decisión' },
 ]
 
 const INITIAL_FORM = {
@@ -48,8 +50,19 @@ function docStatus(id) {
   return { status: 'pending', fileName: null }
 }
 
+function nextId(solicitudes) {
+  const nums = solicitudes.map((s) => {
+    const m = s.id && String(s.id).match(/SOL-\d+-(\d+)/)
+    return m ? parseInt(m[1], 10) : 0
+  })
+  const max = nums.length ? Math.max(...nums) : 0
+  return `SOL-2026-${String(max + 1).padStart(4, '0')}`
+}
+
 export default function FullFlow() {
   const [currentStep, setCurrentStep] = useState(0)
+  const [solicitudes, setSolicitudes] = useState(MOCK_SOLICITUDES)
+  const [currentSolicitudId, setCurrentSolicitudId] = useState(null)
   const [formData, setFormData] = useState(INITIAL_FORM)
   const [docSubStep, setDocSubStep] = useState('checklist')
   const [selectedDocType, setSelectedDocType] = useState(null)
@@ -58,8 +71,10 @@ export default function FullFlow() {
   const [analystNotes, setAnalystNotes] = useState('')
 
   const formComplete = formData.applicant.trim() && formData.requestedAmount && formData.termMonths && formData.purpose.trim()
-  const canGoToStep1 = formComplete
-  const canGoToStep2 = documentsComplete
+  const canGoToStep1 = currentStep >= 1
+  const canGoToStep2 = formComplete
+  const canGoToStep3 = documentsComplete
+  const currentSolicitud = currentSolicitudId ? solicitudes.find((s) => s.id === currentSolicitudId) : null
 
   const updateForm = (field, value) => setFormData((prev) => ({ ...prev, [field]: value }))
 
@@ -131,8 +146,9 @@ export default function FullFlow() {
 
   const CHART_COLORS = ['#237a49', '#2d9d6b', '#54b57d', '#8bd1a8']
 
-  const resetFlow = () => {
+  const goToList = () => {
     setCurrentStep(0)
+    setCurrentSolicitudId(null)
     setFormData(INITIAL_FORM)
     setDocSubStep('checklist')
     setDocumentsComplete(false)
@@ -143,6 +159,59 @@ export default function FullFlow() {
     setChartWidgets([])
   }
 
+  const startNewSolicitud = () => {
+    setCurrentSolicitudId(null)
+    setFormData(INITIAL_FORM)
+    setDocSubStep('checklist')
+    setDocumentsComplete(false)
+    setDecision(null)
+    setAnalystNotes('')
+    setChatMessages([])
+    setChatInput('')
+    setChartWidgets([])
+    setCurrentStep(1)
+  }
+
+  const openSolicitud = (s) => {
+    setCurrentSolicitudId(s.id)
+    setFormData({
+      applicant: s.applicant || '',
+      requestedAmount: s.requestedAmount !== undefined ? String(s.requestedAmount) : '',
+      termMonths: s.termMonths !== undefined ? String(s.termMonths) : '',
+      purpose: s.purpose || '',
+      contactEmail: s.contactEmail || '',
+      contactPhone: s.contactPhone || '',
+      organizationType: s.organizationType || '',
+      notes: s.notes || '',
+    })
+    setCurrentStep(1)
+  }
+
+  const saveAndGoToDocuments = () => {
+    if (!formComplete) return
+    if (!currentSolicitudId) {
+      const id = nextId(solicitudes)
+      setSolicitudes((prev) => [
+        ...prev,
+        {
+          id,
+          applicant: formData.applicant,
+          requestedAmount: Number(formData.requestedAmount),
+          termMonths: Number(formData.termMonths),
+          purpose: formData.purpose,
+          contactEmail: formData.contactEmail,
+          contactPhone: formData.contactPhone,
+          organizationType: formData.organizationType,
+          notes: formData.notes,
+          status: 'Documentos',
+          createdAt: new Date().toISOString().slice(0, 10),
+        },
+      ])
+      setCurrentSolicitudId(id)
+    }
+    setCurrentStep(2)
+  }
+
   return (
     <div className="space-y-8">
       {/* Stepper */}
@@ -150,19 +219,20 @@ export default function FullFlow() {
         <div className="flex items-center justify-between gap-4">
           <button
             type="button"
-            onClick={resetFlow}
+            onClick={goToList}
             className="text-sm text-slate-500 hover:text-slate-700 shrink-0"
           >
-            Reiniciar flujo
+            {currentStep === 0 ? 'Lista de solicitudes' : '← Volver al listado'}
           </button>
           {STEPS.map((step, i) => (
             <div key={step.id} className="flex items-center flex-1 last:flex-none">
               <button
                 type="button"
                 onClick={() => {
-                  if (step.id === 0) setCurrentStep(0)
-                  if (step.id === 1 && canGoToStep1) setCurrentStep(1)
+                  if (step.id === 0) goToList()
+                  if (step.id === 1 && currentStep >= 1) setCurrentStep(1)
                   if (step.id === 2 && canGoToStep2) setCurrentStep(2)
+                  if (step.id === 3 && canGoToStep3) setCurrentStep(3)
                 }}
                 className={`flex items-center gap-2 w-full ${i < STEPS.length - 1 ? 'max-w-[200px]' : ''}`}
               >
@@ -185,16 +255,90 @@ export default function FullFlow() {
         </div>
       </div>
 
-      {/* ========== STEP 0: Datos de la solicitud (no extraíbles de documentos) ========== */}
+      {/* ========== STEP 0: Lista de solicitudes ========== */}
       {currentStep === 0 && (
         <div className="space-y-6">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Datos de la solicitud</h1>
-            <p className="text-slate-600 mt-1">Información que no se obtiene de los documentos; complétala antes de subir archivos.</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">Solicitudes</h1>
+              <p className="text-slate-600 mt-1">Listado de solicitudes de crédito. Crea una nueva o abre una existente.</p>
+            </div>
+            <button
+              type="button"
+              onClick={startNewSolicitud}
+              className="px-5 py-2.5 bg-pontifex-600 text-white rounded-lg font-medium hover:bg-pontifex-700"
+            >
+              Nueva solicitud
+            </button>
+          </div>
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr className="text-left text-slate-600">
+                  <th className="px-4 py-3 font-medium">ID</th>
+                  <th className="px-4 py-3 font-medium">Solicitante</th>
+                  <th className="px-4 py-3 font-medium">Monto</th>
+                  <th className="px-4 py-3 font-medium">Plazo</th>
+                  <th className="px-4 py-3 font-medium">Estado</th>
+                  <th className="px-4 py-3 font-medium">Fecha</th>
+                  <th className="px-4 py-3 font-medium w-24">Acción</th>
+                </tr>
+              </thead>
+              <tbody>
+                {solicitudes.map((s) => (
+                  <tr key={s.id} className="border-b border-slate-100 hover:bg-slate-50/50">
+                    <td className="px-4 py-3 font-mono text-slate-800">{s.id}</td>
+                    <td className="px-4 py-3 text-slate-800">{s.applicant}</td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(s.requestedAmount)}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">{s.termMonths} meses</td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                        s.status === 'Aprobada' ? 'bg-emerald-100 text-emerald-800' :
+                        s.status === 'En evaluación' ? 'bg-amber-100 text-amber-800' :
+                        'bg-slate-100 text-slate-600'
+                      }`}>
+                        {s.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-slate-500">{s.createdAt}</td>
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => openSolicitud(s)}
+                        className="text-pontifex-600 hover:text-pontifex-700 font-medium text-xs"
+                      >
+                        Abrir
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ========== STEP 1: Datos de la solicitud ========== */}
+      {currentStep === 1 && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">Datos de la solicitud</h1>
+              <p className="text-slate-600 mt-1">Información que no se obtiene de los documentos; complétala antes de subir archivos.</p>
+            </div>
+            <button
+              type="button"
+              onClick={goToList}
+              className="px-4 py-2 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-100 text-sm"
+            >
+              ← Volver al listado
+            </button>
           </div>
 
           <form
-            onSubmit={(e) => { e.preventDefault(); if (formComplete) setCurrentStep(1) }}
+            onSubmit={(e) => { e.preventDefault(); saveAndGoToDocuments() }}
             className="bg-white rounded-xl border border-slate-200 p-6 space-y-6"
           >
             <div className="grid sm:grid-cols-2 gap-6">
@@ -317,17 +461,17 @@ export default function FullFlow() {
         </div>
       )}
 
-      {/* ========== STEP 1: Documentos ========== */}
-      {currentStep === 1 && (
+      {/* ========== STEP 2: Documentos ========== */}
+      {currentStep === 2 && (
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-slate-900">Paso 1 — Carga y validación de documentos</h1>
+              <h1 className="text-2xl font-bold text-slate-900">Paso 2 — Carga y validación de documentos</h1>
               <p className="text-slate-600 mt-1">Sube los documentos; el sistema extrae y valida los datos para el análisis.</p>
             </div>
             <button
               type="button"
-              onClick={() => setCurrentStep(0)}
+              onClick={() => setCurrentStep(1)}
               className="px-4 py-2 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-100 text-sm"
             >
               ← Datos de solicitud
@@ -417,7 +561,7 @@ export default function FullFlow() {
               <div className="flex justify-end">
                 <button
                   type="button"
-                  onClick={() => { setDocumentsComplete(true); setCurrentStep(2) }}
+                  onClick={() => { setDocumentsComplete(true); setCurrentStep(3) }}
                   className="px-5 py-2.5 bg-pontifex-600 text-white rounded-lg font-medium hover:bg-pontifex-700"
                 >
                   Documentos listos → Ir a evaluación
@@ -496,19 +640,19 @@ export default function FullFlow() {
         </div>
       )}
 
-      {/* ========== STEP 2: Dashboard de evaluación + Chatbot ========== */}
-      {currentStep === 2 && (
+      {/* ========== STEP 3: Dashboard de evaluación + Chatbot ========== */}
+      {currentStep === 3 && (
         <div className="grid lg:grid-cols-[1fr_360px] gap-6">
           {/* Dashboard column */}
           <div className="space-y-6 min-w-0">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-slate-900">Dashboard de evaluación</h1>
-              <p className="text-slate-600 mt-1">{formData.applicant || 'Solicitante'}</p>
+              <p className="text-slate-600 mt-1">{formData.applicant || 'Solicitante'}{currentSolicitudId && ` · ${currentSolicitudId}`}</p>
             </div>
             <button
               type="button"
-              onClick={() => setCurrentStep(1)}
+              onClick={() => setCurrentStep(2)}
               className="px-4 py-2 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-100 text-sm"
             >
               ← Documentos

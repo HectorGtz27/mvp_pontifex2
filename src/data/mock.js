@@ -1,5 +1,12 @@
 // Mock data for Pontifex mockup
 
+/** Initial list of solicitudes for the list view */
+export const MOCK_SOLICITUDES = [
+  { id: 'SOL-2026-0041', applicant: 'Fundación Comunidad Sostenible', requestedAmount: 500000, termMonths: 18, purpose: 'Proyecto de reforestación', status: 'En evaluación', createdAt: '2026-02-18' },
+  { id: 'SOL-2026-0042', applicant: 'OSC Desarrollo Verde A.C.', requestedAmount: 850000, termMonths: 24, purpose: 'Capital de trabajo y equipo', status: 'Documentos', createdAt: '2026-02-20' },
+  { id: 'SOL-2026-0040', applicant: 'Asociación Emprendedores Locales', requestedAmount: 350000, termMonths: 12, purpose: 'Equipamiento', status: 'Aprobada', createdAt: '2026-02-15' },
+]
+
 export const DOCUMENT_TYPES = [
   { id: 'curriculum', label: 'Curriculum de la empresa', required: true },
   { id: 'cv_directivos', label: 'CV de Principales Directivos y Socios', required: true },
