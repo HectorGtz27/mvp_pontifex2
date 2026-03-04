@@ -2,7 +2,8 @@ const { PutObjectCommand } = require('@aws-sdk/client-s3')
 const { v4: uuidv4 } = require('uuid')
 const path = require('path')
 const { s3, S3_BUCKET } = require('../config/s3.cjs')
-const { analyzeDocumentFormsAsync } = require('../services/textractService.cjs')
+const { analyzeDocumentFormsAsync, extractRawTextAsync, extractRawTextSync } = require('../services/textractService.cjs')
+const { extractBankStatementData } = require('../services/bedrockService.cjs')
 const { createDocumento } = require('../services/documentoService.cjs')
 
 const ALLOWED_MIME = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png']
@@ -76,8 +77,36 @@ async function uploadFile(req, res) {
         }
         textractError = `Error de Textract: ${textractErr.message || textractErr.code || 'Error desconocido'}`
       }
+    } else if (documentTypeId === 'edos_cuenta_bancarios' || documentTypeId === 'estado_cuenta_bancario') {
+      console.log('[Upload] 🏦 Documento es Estado de Cuenta Bancario, extrayendo texto con Textract + Claude...')
+      try {
+        // Step 1: Textract extracts plain text (async to support multi-page PDFs)
+        const banco = req.body?.banco || null
+        const rawText = await extractRawTextAsync(S3_BUCKET, key)
+
+        if (!rawText || rawText.trim().length < 50) {
+          throw new Error('Textract no pudo extraer texto suficiente del documento')
+        }
+
+        // Step 2: Claude via Bedrock identifies the totals regardless of bank format
+        const bedrockResult = await extractBankStatementData(rawText, banco)
+
+        extractedData = {
+          tipo: 'estado_cuenta_bancario',
+          mes: bedrockResult.mes,
+          abonos: bedrockResult.abonos,
+          retiros: bedrockResult.retiros,
+          banco_detectado: bedrockResult.banco_detectado,
+          confianza: bedrockResult.confianza,
+          ...(bedrockResult.parseError && { error_parseo: bedrockResult.parseError }),
+        }
+        console.log('[Upload] ✅ Estado de cuenta procesado:', extractedData)
+      } catch (err) {
+        console.error('❌ [Upload] Error procesando estado de cuenta:', err.message)
+        textractError = `Error procesando estado de cuenta: ${err.message}`
+      }
     } else {
-      console.log(`[Upload] Documento tipo "${documentTypeId}", Textract no aplicable (solo para constancia_situacion_fiscal)`)
+      console.log(`[Upload] Documento tipo "${documentTypeId}", sin procesamiento OCR configurado`)
     }
 
     // ── 4. Save document record in the DB ──

@@ -3,6 +3,9 @@ const {
   AnalyzeDocumentCommand,
   StartDocumentAnalysisCommand,
   GetDocumentAnalysisCommand,
+  DetectDocumentTextCommand,
+  StartDocumentTextDetectionCommand,
+  GetDocumentTextDetectionCommand,
 } = require('@aws-sdk/client-textract')
 
 // ═══════════════════════════════════════════════════════════
@@ -412,10 +415,112 @@ function parseTextractQueriesResponse(response) {
   return result
 }
 
+// ═══════════════════════════════════════════════════════════
+//  TEXT DETECTION — Plain text extraction (for bank statements)
+//  Uses DetectDocumentText (sync, 1 page) or
+//  StartDocumentTextDetection (async, multi-page PDF in S3)
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Extracts plain text from a single-page document (image or 1-page PDF).
+ * Faster and cheaper than FORMS analysis.
+ *
+ * @param {Buffer} fileBuffer - File bytes from multer
+ * @returns {Promise<string>} All text lines joined with newlines
+ */
+async function extractRawTextSync(fileBuffer) {
+  console.log(`[Textract/TEXT] Extrayendo texto (sync), ${fileBuffer.length} bytes...`)
+
+  const client = createClient()
+  const command = new DetectDocumentTextCommand({
+    Document: { Bytes: fileBuffer },
+  })
+
+  const response = await client.send(command)
+  const lines = (response.Blocks || [])
+    .filter(b => b.BlockType === 'LINE')
+    .map(b => b.Text || '')
+
+  const text = lines.join('\n')
+  console.log(`[Textract/TEXT] ✅ Extraídas ${lines.length} líneas`)
+  return text
+}
+
+/**
+ * Extracts plain text from a multi-page PDF already stored in S3.
+ * Uses async job polling (same pattern as analyzeDocumentFormsAsync).
+ *
+ * @param {string} s3Bucket - S3 bucket name
+ * @param {string} s3Key    - S3 object key
+ * @returns {Promise<string>} All text lines joined with newlines
+ */
+async function extractRawTextAsync(s3Bucket, s3Key) {
+  console.log(`[Textract/TEXT-ASYNC] Iniciando extracción de texto multi-página...`)
+  console.log(`[Textract/TEXT-ASYNC] Bucket: ${s3Bucket}, Key: ${s3Key}`)
+
+  const client = createClient()
+
+  // ── 1. Start text detection job ──
+  const startCommand = new StartDocumentTextDetectionCommand({
+    DocumentLocation: {
+      S3Object: { Bucket: s3Bucket, Name: s3Key },
+    },
+  })
+
+  const startResponse = await client.send(startCommand)
+  const jobId = startResponse.JobId
+  console.log(`[Textract/TEXT-ASYNC] ✓ Job iniciado: ${jobId}`)
+
+  // ── 2. Poll until complete ──
+  let status = 'IN_PROGRESS'
+  let allBlocks = []
+  const maxAttempts = 60
+  let attempts = 0
+
+  while (status === 'IN_PROGRESS' && attempts < maxAttempts) {
+    attempts++
+    console.log(`[Textract/TEXT-ASYNC] ⏳ Esperando... (intento ${attempts}/${maxAttempts})`)
+    await new Promise(resolve => setTimeout(resolve, 2000))
+
+    const getCommand = new GetDocumentTextDetectionCommand({ JobId: jobId })
+    const getResponse = await client.send(getCommand)
+    status = getResponse.JobStatus
+
+    if (status === 'SUCCEEDED') {
+      allBlocks.push(...(getResponse.Blocks || []))
+
+      let nextToken = getResponse.NextToken
+      while (nextToken) {
+        const nextCmd = new GetDocumentTextDetectionCommand({ JobId: jobId, NextToken: nextToken })
+        const nextRes = await client.send(nextCmd)
+        allBlocks.push(...(nextRes.Blocks || []))
+        nextToken = nextRes.NextToken
+      }
+      break
+    } else if (status === 'FAILED') {
+      throw new Error(`Textract text detection failed: ${getResponse.StatusMessage}`)
+    }
+  }
+
+  if (status === 'IN_PROGRESS') {
+    throw new Error('Textract text detection timeout')
+  }
+
+  const lines = allBlocks
+    .filter(b => b.BlockType === 'LINE')
+    .map(b => b.Text || '')
+
+  const text = lines.join('\n')
+  console.log(`[Textract/TEXT-ASYNC] ✅ ${lines.length} líneas extraídas de ${s3Bucket}/${s3Key}`)
+  return text
+}
+
 module.exports = {
   analyzeDocumentForms,
   analyzeDocumentFormsAsync,
   analyzeDocumentQueries,
   parseFormsResponse,
   parseTextractQueriesResponse,
+  extractRawTextSync,
+  extractRawTextAsync,
 }
