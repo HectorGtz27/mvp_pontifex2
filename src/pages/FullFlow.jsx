@@ -19,6 +19,7 @@ import {
   MOCK_SCORE,
   MOCK_KPIS,
   MOCK_RECOMMENDATION,
+  COMPATIBLE_PROVIDERS,
 } from '../data/mock'
 import { downloadMasterClientXlsx } from '../utils/masterClientXlsx'
 
@@ -28,6 +29,7 @@ const STEPS = [
   { id: 0, label: 'Datos de la solicitud', short: 'Datos' },
   { id: 1, label: 'Documentos', short: 'Documentos' },
   { id: 2, label: 'Evaluación y decisión', short: 'Decisión' },
+  { id: 3, label: 'Proveedores compatibles', short: 'Matching' },
 ]
 
 const INITIAL_FORM = {
@@ -90,6 +92,7 @@ export default function FullFlow() {
   const formComplete = formData.applicant.trim() && formData.requestedAmount && formData.termMonths && formData.purpose.trim()
   const canGoToStep1 = formComplete
   const canGoToStep2 = documentsComplete
+  const canGoToStep3 = decision === 'approved' || decision === 'adjusted'
 
   const updateForm = (field, value) => setFormData((prev) => ({ ...prev, [field]: value }))
 
@@ -193,6 +196,7 @@ export default function FullFlow() {
                   if (step.id === 0) setCurrentStep(0)
                   if (step.id === 1 && canGoToStep1) setCurrentStep(1)
                   if (step.id === 2 && canGoToStep2) setCurrentStep(2)
+                  if (step.id === 3 && canGoToStep3) setCurrentStep(3)
                 }}
                 className={`flex items-center gap-2 w-full ${i < STEPS.length - 1 ? 'max-w-[200px]' : ''}`}
               >
@@ -788,6 +792,15 @@ export default function FullFlow() {
                     Decisión: <strong>{decision === 'approved' ? 'Aprobado' : decision === 'adjusted' ? 'Aprobado con ajustes' : 'Rechazado'}</strong>
                   </span>
                 )}
+                {(decision === 'approved' || decision === 'adjusted') && (
+                  <button
+                    type="button"
+                    onClick={() => setCurrentStep(3)}
+                    className="ml-auto px-4 py-2 bg-pontifex-600 text-white rounded-lg font-medium text-sm hover:bg-pontifex-700"
+                  >
+                    Ver proveedores compatibles →
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -889,6 +902,103 @@ export default function FullFlow() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========== STEP 3: Proveedores compatibles (matching instituciones financieras) ========== */}
+      {currentStep === 3 && (
+        <div className="space-y-6">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">Proveedores compatibles</h1>
+              <p className="text-slate-600 mt-1">
+                Instituciones financieras que coinciden con el monto, plazo y perfil de la solicitud aprobada.
+              </p>
+            </div>
+            <span className="text-sm text-slate-500 shrink-0">Ordenados por compatibilidad</span>
+          </div>
+
+          <div className="text-sm text-slate-600 bg-slate-50 rounded-xl border border-slate-200 px-4 py-3">
+            <strong>{formData.applicant || 'Solicitante'}</strong>
+            {' · '}
+            {formData.requestedAmount ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(Number(formData.requestedAmount)) : '—'}
+            {' · '}
+            {formData.termMonths || '—'} meses · Score {MOCK_SCORE.grade}
+          </div>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {COMPATIBLE_PROVIDERS.map((p) => (
+              <div
+                key={p.id}
+                className="bg-white rounded-xl border border-slate-200 p-4 flex flex-col hover:border-pontifex-200 hover:shadow-md transition-all"
+              >
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="flex shrink-0 w-9 h-9 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center">
+                      {p.type === 'BANCO' ? (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0 0 12 9.75c-2.551 0-5.056.2-7.5.582V21M3 21h18M12 6.75h.008v.008H12V6.75Z" />
+                        </svg>
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 0 0 .75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 0 0-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0 1 12 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 0 1-.673-.38m0-2.253c-.194.165-.42.295-.673.38A23.978 23.978 0 0 1 3 15.75v-1.32c0-1.083.768-2.015 1.837-2.175A48.111 48.111 0 0 1 8.25 12c2.648 0 5.195.429 7.577 1.22.253.085.479.215.673.38M12 6.042A2.25 2.25 0 0 0 9.75 8.25v1.5M12 6.042a2.25 2.25 0 0 1 2.25 2.25v1.5m-9 0v1.5A2.25 2.25 0 0 0 5.625 12m9 0v1.5a2.25 2.25 0 0 1-2.25 2.25" />
+                        </svg>
+                      )}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-slate-900 truncate">{p.name}</p>
+                      <p className="text-xs text-slate-500">{p.type}</p>
+                    </div>
+                  </div>
+                  <span
+                    className={`shrink-0 px-2 py-1 rounded-lg text-xs font-semibold ${
+                      p.matchPercent >= 80 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                    }`}
+                  >
+                    {p.matchPercent}% match
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {p.products.map((prod) => (
+                    <span
+                      key={prod}
+                      className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-xs font-medium"
+                    >
+                      {prod}
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-auto flex items-center gap-2 flex-wrap">
+                  {p.partner && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 text-xs font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> Partner
+                    </span>
+                  )}
+                  {p.contrato && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Contrato
+                    </span>
+                  )}
+                  <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-xs font-bold">
+                    {p.badge}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between pt-2">
+            <button
+              type="button"
+              onClick={() => setCurrentStep(2)}
+              className="px-4 py-2 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-100 text-sm"
+            >
+              ← Decisión
+            </button>
+            <p className="text-sm text-slate-500">
+              {COMPATIBLE_PROVIDERS.length} proveedores compatibles con esta solicitud.
+            </p>
           </div>
         </div>
       )}

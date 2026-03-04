@@ -146,3 +146,18 @@ export const MOCK_CREDITS = [
     ],
   },
 ]
+
+/** Proveedores compatibles (instituciones financieras) — ordenados por compatibilidad. */
+export const COMPATIBLE_PROVIDERS = [
+  { id: 'autokapital', name: 'AUTOKAPITAL', type: 'FINANCIERA', matchPercent: 100, products: ['Crédito Simple', 'Crédito Revolvente'], partner: true, contrato: true, badge: 'R' },
+  { id: 'helios', name: 'HELIOS', type: 'FINANCIERA', matchPercent: 100, products: ['Crédito Simple', 'Crédito Revolvente'], partner: false, contrato: false, badge: 'R' },
+  { id: 'rfj', name: 'RFJ CAPITAL', type: 'FINANCIERA', matchPercent: 85, products: ['Crédito Simple'], partner: true, contrato: true, badge: 'L' },
+  { id: 'coppel', name: 'BANCA EMPRESARIAL COPPEL', type: 'BANCO', matchPercent: 85, products: ['Crédito Simple', 'Crédito Revolvente', 'Arrendamiento'], partner: false, contrato: false, badge: 'R' },
+  { id: 'grupo1120', name: 'GRUPO 1120', type: 'FINANCIERA', matchPercent: 80, products: ['Crédito Simple', 'Crédito Revolvente'], partner: false, contrato: false, badge: 'R' },
+  { id: 'santander', name: 'SANTANDER PyME', type: 'BANCO', matchPercent: 65, products: ['Crédito Simple', 'Crédito Revolvente', 'Factoraje', 'Arrendamiento'], partner: false, contrato: false, badge: 'B' },
+  { id: 'banregio', name: 'BANREGIO', type: 'BANCO', matchPercent: 65, products: ['Crédito Simple', 'Crédito Revolvente', 'Factoraje', 'Arrendamiento'], partner: false, contrato: false, badge: 'R' },
+  { id: 'finamo', name: 'FINAMO', type: 'FINANCIERA', matchPercent: 65, products: ['Crédito Simple', 'Crédito Revolvente', 'Arrendamiento'], partner: true, contrato: true, badge: 'N' },
+  { id: 'heybanco', name: 'HEY BANCO', type: 'BANCO', matchPercent: 65, products: ['Crédito Simple', 'Crédito Revolvente'], partner: true, contrato: true, badge: 'N' },
+  { id: 'covalto', name: 'COVALTO', type: 'BANCO', matchPercent: 65, products: ['Crédito Simple', 'Crédito Revolvente', 'Factoraje', 'Arrendamiento'], partner: false, contrato: false, badge: 'N' },
+  { id: 'anticipa', name: 'ANTICIPA / FINSUS', type: 'FINANCIERA', matchPercent: 65, products: ['Crédito Simple', 'Crédito Revolvente'], partner: true, contrato: true, badge: 'N' },
+]
