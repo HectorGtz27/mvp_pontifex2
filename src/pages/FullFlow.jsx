@@ -71,13 +71,14 @@ export default function FullFlow() {
   const [dragOver, setDragOver] = useState(false)
   const [extractedFields, setExtractedFields] = useState(null)
   const [confirmingData, setConfirmingData] = useState(false)
+  const [currentDocumentData, setCurrentDocumentData] = useState(null) // Data from existing document being replaced
   const fileInputRef = useRef(null)
 
   // ── API-driven state ──
   const [clienteId, setClienteId] = useState(null)
   const [solicitudId, setSolicitudId] = useState(null)
   const [documentTypes, setDocumentTypes] = useState([])
-  const [uploadedDocs, setUploadedDocs] = useState({}) // { [tipo_documento]: { fileName, status } }
+  const [uploadedDocs, setUploadedDocs] = useState({}) // { [tipo_documento]: { fileName, status, documentoId } }
   const [spreadsheetData, setSpreadsheetData] = useState([])
   const [scoreData, setScoreData] = useState(null)
   const [kpisData, setKpisData] = useState([])
@@ -92,13 +93,35 @@ export default function FullFlow() {
       .catch(() => setDocumentTypes([]))
   }, [])
 
+  // ── Load documents when entering documents step (Step 1) ──
+  useEffect(() => {
+    if (solicitudId && currentStep === 1) {
+      fetch(`/api/solicitudes/${solicitudId}/documents`)
+        .then(res => res.ok ? res.json() : [])
+        .then(docs => {
+          const docsMap = {}
+          docs.forEach(doc => {
+            // Consider a document validated if it has extractedData or estado is 'procesado'
+            const isValidated = doc.extractedData || doc.estado === 'procesado'
+            docsMap[doc.tipoDocumentoId] = {
+              status: isValidated ? 'validated' : 'pending_review',
+              fileName: doc.fileName,
+              documentoId: doc.id
+            }
+          })
+          setUploadedDocs(docsMap)
+        })
+        .catch(err => console.error('Error loading documents:', err))
+    }
+  }, [solicitudId, currentStep])
+
   // ── Load solicitud if coming from AdminSolicitudes ──
   useEffect(() => {
     const solicitudIdFromState = location.state?.solicitudId
     if (solicitudIdFromState) {
       setSolicitudId(solicitudIdFromState)
       fetchSolicitud(solicitudIdFromState)
-        .then((sol) => {
+        .then(async (sol) => {
           // Populate formData with solicitud data
           setFormData({
             razonSocial: sol.cliente?.razonSocial || '',
@@ -121,6 +144,28 @@ export default function FullFlow() {
             notas: sol.notas || '',
           })
           setClienteId(sol.clienteId)
+          
+          // Load existing documents for this solicitud
+          try {
+            const res = await fetch(`/api/solicitudes/${solicitudIdFromState}/documents`)
+            if (res.ok) {
+              const docs = await res.json()
+              const docsMap = {}
+              docs.forEach(doc => {
+                // Consider a document validated if it has extractedData or estado is 'procesado'
+                const isValidated = doc.extractedData || doc.estado === 'procesado'
+                docsMap[doc.tipoDocumentoId] = {
+                  status: isValidated ? 'validated' : 'pending_review',
+                  fileName: doc.fileName,
+                  documentoId: doc.id
+                }
+              })
+              setUploadedDocs(docsMap)
+            }
+          } catch (err) {
+            console.error('Error loading documents:', err)
+          }
+          
           // If solicitud already has data, we can go to documents step
           if (sol.monto && sol.destino) {
             setCurrentStep(1)
@@ -198,6 +243,33 @@ export default function FullFlow() {
   function docStatus(id) {
     if (uploadedDocs[id]) return uploadedDocs[id]
     return { status: 'pending', fileName: null }
+  }
+
+  // Load current document data when replacing
+  const handleSelectDocumentToReplace = async (doc) => {
+    setSelectedDocType(doc)
+    setCurrentDocumentData(null)
+    
+    const docInfo = docStatus(doc.id)
+    if (docInfo.documentoId && solicitudId) {
+      try {
+        const res = await fetch(`/api/solicitudes/${solicitudId}/documents`)
+        if (res.ok) {
+          const docs = await res.json()
+          const currentDoc = docs.find(d => d.id === docInfo.documentoId)
+          if (currentDoc && currentDoc.extractedData) {
+            setCurrentDocumentData({
+              fileName: currentDoc.fileName,
+              extractedData: currentDoc.extractedData,
+              createdAt: currentDoc.createdAt
+            })
+          }
+        }
+      } catch (err) {
+        console.error('Error loading current document:', err)
+      }
+    }
+    setDocSubStep('upload')
   }
 
   const handleFileUpload = async (file) => {
@@ -625,7 +697,7 @@ export default function FullFlow() {
                             {s.fileName && <span className="text-sm text-slate-500 font-mono">{s.fileName}</span>}
                             <button
                               type="button"
-                              onClick={() => { setSelectedDocType(doc); setDocSubStep('upload') }}
+                              onClick={() => handleSelectDocumentToReplace(doc)}
                               className="text-sm font-medium text-pontifex-600 hover:text-pontifex-700"
                             >
                               {s.status === 'pending' ? 'Subir' : 'Reemplazar'}
@@ -647,9 +719,9 @@ export default function FullFlow() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
                       const baseName = formData.razonSocial?.replace(/\s+/g, '_') || 'solicitud'
-                      downloadMasterClientXlsx(
+                      await downloadMasterClientXlsx(
                         formData,
                         spreadsheetData,
                         `master_client_pontifex_${baseName}.xlsx`
@@ -701,8 +773,58 @@ export default function FullFlow() {
               <div className="bg-white rounded-xl border border-slate-200 p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="font-semibold text-slate-900">Subir: {selectedDocType?.label}</h2>
-                  <button type="button" onClick={() => { setDocSubStep('checklist'); setUploadResult(null); setUploadError(null) }} className="text-sm text-slate-500 hover:text-slate-700">← Volver</button>
+                  <button type="button" onClick={() => { setDocSubStep('checklist'); setUploadResult(null); setUploadError(null); setCurrentDocumentData(null) }} className="text-sm text-slate-500 hover:text-slate-700">← Volver</button>
                 </div>
+
+                {/* Show current document data if replacing */}
+                {currentDocumentData && currentDocumentData.extractedData && (
+                  <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <h3 className="font-medium text-blue-900">Documento actual</h3>
+                        <p className="text-sm text-blue-700 mt-1">{currentDocumentData.fileName}</p>
+                        <p className="text-xs text-blue-600 mt-0.5">
+                          Subido: {new Date(currentDocumentData.createdAt).toLocaleDateString('es-MX', { 
+                            year: 'numeric', 
+                            month: 'long', 
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
+                      </div>
+                      <span className="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                        ✓ Datos extraídos
+                      </span>
+                    </div>
+                    
+                    <div className="border-t border-blue-200 pt-3 mt-3">
+                      <p className="text-xs font-medium text-blue-800 uppercase tracking-wide mb-2">Campos extraídos:</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {Object.entries(currentDocumentData.extractedData).map(([key, value]) => {
+                          // Skip internal/extra fields or null values
+                          if (key === '_extra' || !value || value === '') return null
+                          
+                          // Format field names
+                          const fieldLabel = key
+                            .replace(/_/g, ' ')
+                            .replace(/\b\w/g, l => l.toUpperCase())
+                          
+                          return (
+                            <div key={key} className="text-sm">
+                              <span className="text-blue-700 font-medium">{fieldLabel}:</span>{' '}
+                              <span className="text-blue-900">{typeof value === 'object' ? JSON.stringify(value) : value}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                    
+                    <p className="text-xs text-blue-600 mt-3 italic">
+                      Al subir un nuevo archivo, estos datos serán reemplazados por los del nuevo documento.
+                    </p>
+                  </div>
+                )}
 
                 <input
                   ref={fileInputRef}
@@ -767,7 +889,7 @@ export default function FullFlow() {
                     <p className="text-sm text-emerald-700 break-all">URL: {uploadResult.s3Url}</p>
                     <button
                       type="button"
-                      onClick={() => { setDocSubStep('checklist'); setUploadResult(null) }}
+                      onClick={() => { setDocSubStep('checklist'); setUploadResult(null); setCurrentDocumentData(null) }}
                       className="mt-2 px-4 py-2 bg-pontifex-600 text-white rounded-lg font-medium hover:bg-pontifex-700 text-sm"
                     >
                       Volver al listado
