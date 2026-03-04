@@ -25,6 +25,42 @@ import { downloadMasterClientXlsx } from '../utils/masterClientXlsx'
 
 const GRADE_COLORS = { A: 'bg-emerald-100 text-emerald-800', B: 'bg-sky-100 text-sky-800', C: 'bg-amber-100 text-amber-800', D: 'bg-red-100 text-red-800' }
 
+// Waterfall chart: Net Revenue → costs/expenses → Net Income (Fiscal Calendar style)
+const WATERFALL_ITEMS = [
+  { name: 'Ingresos netos', type: 'total', value: 961134 },
+  { name: 'Costo de ventas', type: 'decrease', value: 624772 },
+  { name: 'Utilidad bruta', type: 'total', value: 336361 },
+  { name: 'Gastos operativos', type: 'decrease', value: 235370 },
+  { name: 'Ingreso antes de impuestos', type: 'total', value: 100991 },
+  { name: 'Provisión impuesto', type: 'decrease', value: 29687 },
+  { name: 'Ingreso interés minoritario', type: 'increase', value: 11135 },
+  { name: 'Utilidad neta', type: 'total', value: 61642 },
+]
+function buildWaterfallData() {
+  let cumulative = 0
+  return WATERFALL_ITEMS.map((item) => {
+    let pv = 0
+    let uv = 0
+    if (item.type === 'total') {
+      pv = 0
+      uv = item.value
+      cumulative = item.value
+    } else if (item.type === 'decrease') {
+      cumulative -= item.value
+      pv = cumulative
+      uv = item.value
+    } else {
+      pv = cumulative
+      uv = item.value
+      cumulative += item.value
+    }
+    return { ...item, pv, uv }
+  })
+}
+const WATERFALL_DATA = buildWaterfallData()
+const WATERFALL_COLORS = { total: '#2563eb', increase: '#16a34a', decrease: '#ea580c' }
+const formatWaterfallCurrency = (v) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(v)
+
 const STEPS = [
   { id: 0, label: 'Datos de la solicitud', short: 'Datos' },
   { id: 1, label: 'Documentos', short: 'Documentos' },
@@ -699,6 +735,53 @@ export default function FullFlow() {
                     </span>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            {/* Waterfall: Ingresos → costos/gastos → Utilidad neta */}
+            <div className="lg:col-span-3 bg-white rounded-xl border border-slate-200 p-5">
+              <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-1">Flujo de resultados</h2>
+              <p className="text-slate-500 text-sm mb-4">Calendario fiscal — de ingresos netos a utilidad neta</p>
+              <div className="flex flex-col xl:flex-row gap-6 items-start">
+                <div className="w-full xl:flex-1 min-h-[320px]">
+                  <div className="flex items-center gap-4 mb-3">
+                    <span className="flex items-center gap-1.5 text-xs">
+                      <span className="w-3 h-3 rounded-sm bg-[#2563eb]" /> Total
+                    </span>
+                    <span className="flex items-center gap-1.5 text-xs">
+                      <span className="w-3 h-3 rounded-sm bg-[#16a34a]" /> Aumento
+                    </span>
+                    <span className="flex items-center gap-1.5 text-xs">
+                      <span className="w-3 h-3 rounded-sm bg-[#ea580c]" /> Disminución
+                    </span>
+                  </div>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={WATERFALL_DATA} margin={{ top: 8, right: 8, left: 8, bottom: 24 }} barCategoryGap="12%">
+                      <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-25} textAnchor="end" height={56} />
+                      <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => (v / 1000 >= 1 ? `${v / 1000}K` : v)} domain={[0, 1100000]} />
+                      <Tooltip formatter={(v) => [formatWaterfallCurrency(v), '']} labelFormatter={(name) => name} />
+                      <Bar dataKey="pv" stackId="wf" fill="transparent" radius={0} />
+                      <Bar dataKey="uv" stackId="wf" radius={[4, 4, 0, 0]} name="Monto">
+                        {WATERFALL_DATA.map((entry, i) => (
+                          <Cell key={i} fill={WATERFALL_COLORS[entry.type]} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="w-full xl:w-72 shrink-0 border border-slate-200 rounded-lg overflow-hidden">
+                  <div className="bg-slate-50 px-3 py-2 border-b border-slate-200">
+                    <span className="text-xs font-semibold text-slate-600">Calendario fiscal</span>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {WATERFALL_ITEMS.map((row, i) => (
+                      <div key={i} className="flex justify-between items-center px-3 py-2 text-sm">
+                        <span className="text-slate-700">{row.name}</span>
+                        <span className="font-mono text-slate-900 tabular-nums">{formatWaterfallCurrency(row.value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
 
