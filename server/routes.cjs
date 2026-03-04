@@ -11,6 +11,47 @@ router.get('/document-types', async (_req, res) => {
 })
 
 // ─── Application ───────────────────────────────────────────
+router.get('/applications', async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500)
+  const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0)
+  const q = (req.query.q || '').toString().trim()
+
+  const params = []
+  let where = ''
+  if (q) {
+    params.push(`%${q}%`)
+    where = `WHERE applicant ILIKE $${params.length} OR id ILIKE $${params.length}`
+  }
+
+  params.push(limit)
+  params.push(offset)
+
+  const { rows } = await pool.query(
+    `SELECT id, applicant, requested_amount, term_months, purpose, submitted_at,
+            documents_total, documents_uploaded, documents_validated, documents_pending_review
+     FROM applications
+     ${where}
+     ORDER BY submitted_at DESC, id DESC
+     LIMIT $${params.length - 1} OFFSET $${params.length}`,
+    params
+  )
+
+  res.json(rows.map((r) => ({
+    id: r.id,
+    applicant: r.applicant,
+    requestedAmount: Number(r.requested_amount),
+    termMonths: r.term_months,
+    purpose: r.purpose,
+    submittedAt: r.submitted_at,
+    documentsStatus: {
+      total: r.documents_total,
+      uploaded: r.documents_uploaded,
+      validated: r.documents_validated,
+      pendingReview: r.documents_pending_review,
+    },
+  })))
+})
+
 router.get('/applications/:id', async (req, res) => {
   const { rows } = await pool.query('SELECT * FROM applications WHERE id = $1', [req.params.id])
   if (!rows.length) return res.status(404).json({ error: 'Not found' })

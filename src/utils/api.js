@@ -19,6 +19,15 @@ export async function fetchApplication(id) {
   return apiFetch(`/applications/${id}`)
 }
 
+export async function fetchApplications({ q, limit, offset } = {}) {
+  const params = new URLSearchParams()
+  if (q) params.set('q', q)
+  if (typeof limit === 'number') params.set('limit', String(limit))
+  if (typeof offset === 'number') params.set('offset', String(offset))
+  const suffix = params.toString() ? `?${params.toString()}` : ''
+  return apiFetch(`/applications${suffix}`)
+}
+
 export async function fetchExtractedFields(appId) {
   return apiFetch(`/applications/${appId}/extracted-fields`)
 }

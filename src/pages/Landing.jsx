@@ -29,8 +29,8 @@ function Landing() {
 
         {/* Administrar solicitudes */}
         <button
-          disabled
-          className="flex-1 flex flex-col items-center gap-4 bg-white hover:bg-slate-50 text-slate-700 rounded-2xl px-8 py-12 shadow-md border border-slate-200 transition-all duration-150 cursor-not-allowed opacity-60"
+          onClick={() => navigate('/solicitudes')}
+          className="flex-1 flex flex-col items-center gap-4 bg-white hover:bg-slate-50 text-slate-700 rounded-2xl px-8 py-12 shadow-md border border-slate-200 transition-all duration-150 hover:shadow-lg hover:-translate-y-0.5 cursor-pointer"
         >
           <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center">
             <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-slate-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
@@ -39,7 +39,7 @@ function Landing() {
           </div>
           <div className="text-center">
             <p className="text-xl font-semibold">Administrar solicitudes</p>
-            <p className="text-sm text-slate-400 mt-1">Próximamente disponible</p>
+            <p className="text-sm text-slate-500 mt-1">Ver solicitudes y estatus de documentos</p>
           </div>
         </button>
       </div>

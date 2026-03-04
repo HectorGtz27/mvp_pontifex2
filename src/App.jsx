@@ -1,6 +1,7 @@
 import { Routes, Route, Link, Navigate } from 'react-router-dom'
 import FullFlow from './pages/FullFlow'
 import Landing from './pages/Landing'
+import AdminSolicitudes from './pages/AdminSolicitudes'
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/solicitud" element={<FullFlow />} />
+          <Route path="/solicitudes" element={<AdminSolicitudes />} />
           <Route path="/documentos" element={<Navigate to="/" replace />} />
           <Route path="/decision" element={<Navigate to="/" replace />} />
           <Route path="/covenants" element={<Navigate to="/" replace />} />
