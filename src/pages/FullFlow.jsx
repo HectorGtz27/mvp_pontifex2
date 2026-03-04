@@ -82,6 +82,7 @@ export default function FullFlow() {
   const [spreadsheetData, setSpreadsheetData] = useState([])
   const [scoreData, setScoreData] = useState(null)
   const [kpisData, setKpisData] = useState([])
+  const [bankStatements, setBankStatements] = useState([]) // [{ mes, abonos, retiros, banco_detectado }]
   const [recommendationData, setRecommendationData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [savingApp, setSavingApp] = useState(false)
@@ -315,8 +316,8 @@ export default function FullFlow() {
   const handleConfirmExtractedData = async () => {
     setConfirmingData(true)
     try {
-      // Actualizar el cliente con los datos extraídos
-      if (clienteId && extractedFields) {
+      // Solo actualizar el cliente si es CSF (no para estados de cuenta)
+      if (clienteId && extractedFields && extractedFields.tipo !== 'estado_cuenta_bancario') {
         await fetch(`/api/clientes/${clienteId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -338,6 +339,20 @@ export default function FullFlow() {
         }))
       }
       
+      // Si es estado de cuenta, acumular los datos para el Excel
+      if (extractedFields?.tipo === 'estado_cuenta_bancario') {
+        setBankStatements(prev => {
+          // Reemplaza si ya existe el mismo mes
+          const filtered = prev.filter(b => b.mes !== extractedFields.mes)
+          return [...filtered, {
+            mes: extractedFields.mes,
+            abonos: extractedFields.abonos,
+            retiros: extractedFields.retiros,
+            banco_detectado: extractedFields.banco_detectado,
+          }]
+        })
+      }
+
       // Marcar documento como validado
       if (selectedDocType?.id) {
         setUploadedDocs(prev => ({ 
@@ -756,7 +771,8 @@ export default function FullFlow() {
                       await downloadMasterClientXlsx(
                         formData,
                         dataToUse,
-                        `master_client_pontifex_${baseName}.xlsx`
+                        `master_client_pontifex_${baseName}.xlsx`,
+                        bankStatements
                       )
                     }}
                     className="px-3 py-2 rounded-lg border border-pontifex-200 bg-pontifex-50 text-pontifex-700 text-sm font-medium hover:bg-pontifex-100"
@@ -937,7 +953,9 @@ export default function FullFlow() {
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
                   <div>
-                    <span className="font-medium text-slate-800">Datos extraídos de la Constancia</span>
+                    <span className="font-medium text-slate-800">
+                    {extractedFields.tipo === 'estado_cuenta_bancario' ? 'Datos extraídos: Estado de Cuenta' : 'Datos extraídos de la Constancia'}
+                  </span>
                     <p className="text-xs text-slate-500 mt-0.5">Revisa y confirma los datos antes de guardarlos</p>
                   </div>
                   <span className="px-2 py-1 rounded text-sm font-medium bg-emerald-100 text-emerald-800">
@@ -945,6 +963,39 @@ export default function FullFlow() {
                   </span>
                 </div>
                 <div className="p-6">
+                  {/* ── Estado de cuenta bancario ── */}
+                  {extractedFields.tipo === 'estado_cuenta_bancario' ? (
+                    <div>
+                      <div className="grid grid-cols-3 gap-3 mb-4">
+                        <div className="bg-slate-50 rounded-lg p-4 border border-slate-100 text-center">
+                          <p className="text-xs text-slate-500 mb-1">Periodo</p>
+                          <p className="text-lg font-bold text-slate-800">{extractedFields.mes ?? '—'}</p>
+                          <p className="text-xs text-slate-400 mt-0.5">{extractedFields.banco_detectado ?? ''}</p>
+                        </div>
+                        <div className="bg-emerald-50 rounded-lg p-4 border border-emerald-100 text-center">
+                          <p className="text-xs text-emerald-600 mb-1">Total abonos</p>
+                          <p className="text-lg font-bold text-emerald-700">
+                            {extractedFields.abonos != null
+                              ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(extractedFields.abonos)
+                              : '—'}
+                          </p>
+                        </div>
+                        <div className="bg-red-50 rounded-lg p-4 border border-red-100 text-center">
+                          <p className="text-xs text-red-600 mb-1">Total retiros</p>
+                          <p className="text-lg font-bold text-red-700">
+                            {extractedFields.retiros != null
+                              ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(extractedFields.retiros)
+                              : '—'}
+                          </p>
+                        </div>
+                      </div>
+                      {extractedFields.confianza != null && (
+                        <p className="text-xs text-slate-400 text-center">
+                          Confianza de extracción: {Math.round(extractedFields.confianza * 100)}%
+                        </p>
+                      )}
+                    </div>
+                  ) : (
                   <div className="space-y-4">
                     {/* Razón Social */}
                     {extractedFields.razon_social && (
@@ -1051,6 +1102,7 @@ export default function FullFlow() {
                       </div>
                     )}
                   </div>
+                  )} {/* end CSF / bank statement conditional */}
                 </div>
 
                 <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
@@ -1075,7 +1127,7 @@ export default function FullFlow() {
                       disabled={confirmingData}
                       className="px-5 py-2 bg-pontifex-600 text-white rounded-lg font-medium hover:bg-pontifex-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {confirmingData ? 'Confirmando...' : '✓ Confirmar y actualizar cliente'}
+                      {confirmingData ? 'Confirmando...' : extractedFields?.tipo === 'estado_cuenta_bancario' ? '✓ Confirmar datos' : '✓ Confirmar y actualizar cliente'}
                     </button>
                   </div>
                 </div>

@@ -20,8 +20,12 @@ function getVal(extracted, ...campos) {
  * Load Excel template and fill it with formData and extracted OCR values.
  * Loads from public/MASTER_Cliente_Template.xlsx
  * Uses ExcelJS to preserve all styles, formulas, and formatting.
+ *
+ * @param {object} formData
+ * @param {Array}  extracted       - OCR spreadsheet rows (CSF, etc.)
+ * @param {Array}  [bankStatements] - [{ mes:'YYYY-MM', abonos:number, retiros:number, banco_detectado:string }]
  */
-export async function buildMasterClientWorkbook(formData, extracted) {
+export async function buildMasterClientWorkbook(formData, extracted, bankStatements = []) {
   // 1. Load the template file
   const templatePath = '/MASTER_Cliente_Template.xlsx'
   const response = await fetch(templatePath)
@@ -111,7 +115,32 @@ export async function buildMasterClientWorkbook(formData, extracted) {
   worksheet.getCell('K37').value = margenRealUtilidad
   worksheet.getCell('P23').value = situacionBuroCredito
 
-  // 5. Add or update "Datos extraídos (OCR)" sheet
+  // 5. Fill "Flujos" sheet with bank statement data
+  // Row 6 = Enero, Row 7 = Febrero, ..., Row 17 = Diciembre
+  // D = Ingresos (abonos), E = Egresos (retiros)
+  if (bankStatements && bankStatements.length > 0) {
+    const flujoSheet = workbook.getWorksheet('Flujos')
+    if (flujoSheet) {
+      bankStatements.forEach((stmt) => {
+        const monthNum = mesToMonthNumber(stmt.mes)
+        if (!monthNum) {
+          console.warn(`[Excel] No se pudo determinar el mes de: ${stmt.mes}`)
+          return
+        }
+        const row = 5 + monthNum // month 1 → row 6, month 12 → row 17
+        if (stmt.abonos != null) {
+          flujoSheet.getCell(`D${row}`).value = Number(stmt.abonos)
+        }
+        if (stmt.retiros != null) {
+          flujoSheet.getCell(`E${row}`).value = Number(stmt.retiros)
+        }
+      })
+    } else {
+      console.warn('[Excel] Hoja "Flujos" no encontrada en la plantilla — se omitieron los estados de cuenta')
+    }
+  }
+
+  // 6. Add or update "Datos extraídos (OCR)" sheet
   const ocrSheetName = 'Datos extraídos (OCR)'
   
   // Remove old OCR sheet if exists
@@ -152,12 +181,51 @@ export async function buildMasterClientWorkbook(formData, extracted) {
   return workbook
 }
 
+// ─── Meses en español → número ───────────────────────────────────────────────
+const MONTH_MAP = {
+  'enero': 1, 'ene': 1,
+  'febrero': 2, 'feb': 2,
+  'marzo': 3, 'mar': 3,
+  'abril': 4, 'abr': 4,
+  'mayo': 5, 'may': 5,
+  'junio': 6, 'jun': 6,
+  'julio': 7, 'jul': 7,
+  'agosto': 8, 'ago': 8,
+  'septiembre': 9, 'sep': 9, 'sept': 9,
+  'octubre': 10, 'oct': 10,
+  'noviembre': 11, 'nov': 11,
+  'diciembre': 12, 'dic': 12,
+}
+
+/**
+ * Extracts the month number (1-12) from a mes string.
+ * Accepts formats: "YYYY-MM", "MM-YYYY", "Enero 2024", "ene-2024", etc.
+ */
+function mesToMonthNumber(mes) {
+  if (!mes) return null
+  // Try "YYYY-MM" or "MM-YYYY"
+  const numMatch = mes.match(/(\d{4})-(\d{1,2})|(\d{1,2})-(\d{4})/)
+  if (numMatch) {
+    const a = parseInt(numMatch[2] || numMatch[3], 10)
+    const b = parseInt(numMatch[1] || numMatch[4], 10)
+    // The month number is the one between 1-12
+    const monthNum = a >= 1 && a <= 12 ? a : b
+    if (monthNum >= 1 && monthNum <= 12) return monthNum
+  }
+  // Try Spanish month name
+  const lower = mes.toLowerCase()
+  for (const [key, num] of Object.entries(MONTH_MAP)) {
+    if (lower.includes(key)) return num
+  }
+  return null
+}
+
 /**
  * Trigger download of master_client_pontifex.xlsx filled with formData and extracted data.
  */
-export async function downloadMasterClientXlsx(formData, extracted, fileName = 'master_client_pontifex.xlsx') {
+export async function downloadMasterClientXlsx(formData, extracted, fileName = 'master_client_pontifex.xlsx', bankStatements = []) {
   try {
-    const workbook = await buildMasterClientWorkbook(formData, extracted)
+    const workbook = await buildMasterClientWorkbook(formData, extracted, bankStatements)
     
     // Generate buffer and trigger download
     const buffer = await workbook.xlsx.writeBuffer()
