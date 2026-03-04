@@ -120,28 +120,22 @@ export default function AdminSolicitudes() {
               )}
 
               {rows.map((a) => {
-                const total = a?.documentsStatus?.total ?? 0
-                const validated = a?.documentsStatus?.validated ?? 0
-                const pendingReview = a?.documentsStatus?.pendingReview ?? 0
+                const total = a?.docsTotal ?? 0
+                const uploaded = a?.docsSubidos ?? 0
                 return (
                   <tr key={a.id} className="border-b border-slate-100 hover:bg-slate-50/50">
-                    <td className="px-4 py-2 font-mono text-slate-800">{a.id}</td>
-                    <td className="px-4 py-2 text-slate-800">{a.applicant}</td>
-                    <td className="px-4 py-2 text-slate-800">{formatMoney(a.requestedAmount)}</td>
-                    <td className="px-4 py-2 text-slate-700">{a.termMonths ? `${a.termMonths} meses` : '—'}</td>
+                    <td className="px-4 py-2 font-mono text-slate-800">{a.id?.slice(0, 8)}</td>
+                    <td className="px-4 py-2 text-slate-800">{a.razonSocial || a.nombreComercial || '—'}</td>
+                    <td className="px-4 py-2 text-slate-800">{formatMoney(a.monto)}</td>
+                    <td className="px-4 py-2 text-slate-700">{a.plazoDeseado || '—'}</td>
                     <td className="px-4 py-2 text-slate-700">
-                      <span className="font-medium text-slate-800">{validated}</span>
+                      <span className="font-medium text-slate-800">{uploaded}</span>
                       <span className="text-slate-400">/{total}</span>
-                      {pendingReview > 0 && (
-                        <span className="ml-2 text-amber-700 text-xs bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
-                          {pendingReview} en revisión
-                        </span>
-                      )}
                     </td>
                     <td className="px-4 py-2 text-right">
                       <button
                         type="button"
-                        onClick={() => navigate('/solicitud', { state: { applicationId: a.id } })}
+                        onClick={() => navigate('/solicitud', { state: { solicitudId: a.id } })}
                         className="text-sm font-medium text-pontifex-600 hover:text-pontifex-700"
                       >
                         Abrir →
@@ -156,8 +150,7 @@ export default function AdminSolicitudes() {
       </div>
 
       <div className="text-sm text-slate-500">
-        Nota: el botón “Abrir” lleva al flujo actual. Si quieres que el flujo cargue automáticamente la solicitud por ID,
-        lo conectamos al endpoint `GET /api/applications/:id`.
+        Nota: el botón "Abrir" lleva al flujo actual con los datos precargados de la solicitud seleccionada.
       </div>
     </div>
   )

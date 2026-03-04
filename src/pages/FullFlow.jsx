@@ -1,4 +1,5 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { useLocation } from 'react-router-dom'
 import {
   BarChart,
   Bar,
@@ -12,14 +13,16 @@ import {
   Legend,
 } from 'recharts'
 import {
-  DOCUMENT_TYPES,
-  MOCK_APPLICATION,
-  MOCK_EXTRACTION_RESULT,
-  MOCK_EXTRACTED_SPREADSHEET,
-  MOCK_SCORE,
-  MOCK_KPIS,
-  MOCK_RECOMMENDATION,
-} from '../data/mock'
+  fetchDocumentTypes,
+  fetchSpreadsheet,
+  fetchScore,
+  fetchKpis,
+  fetchRecommendation,
+  fetchSolicitud,
+  createCliente,
+  createSolicitud,
+  submitDecision,
+} from '../utils/api'
 import { downloadMasterClientXlsx } from '../utils/masterClientXlsx'
 
 const GRADE_COLORS = { A: 'bg-emerald-100 text-emerald-800', B: 'bg-sky-100 text-sky-800', C: 'bg-amber-100 text-amber-800', D: 'bg-red-100 text-red-800' }
@@ -31,24 +34,30 @@ const STEPS = [
 ]
 
 const INITIAL_FORM = {
-  applicant: '',
-  requestedAmount: '',
-  termMonths: '',
-  purpose: '',
-  contactEmail: '',
-  contactPhone: '',
-  organizationType: '',
-  notes: '',
-}
-
-function docStatus(id) {
-  if (id === 'estados_financieros') return { status: 'validated', fileName: 'Estados_Financieros_2024.pdf' }
-  if (['curriculum', 'acta', 'situacion_fiscal'].includes(id)) return { status: 'validated', fileName: `${id}.pdf` }
-  if (id === 'declaraciones') return { status: 'pending_review', fileName: 'Declaraciones_2022-24.pdf' }
-  return { status: 'pending', fileName: null }
+  // ── Cliente (empresa) ──
+  razonSocial: '',
+  nombreComercial: '',
+  telefono: '',
+  celular: '',
+  correoElectronico: '',
+  paginaWeb: '',
+  numEmpleadosPermanentes: '',
+  numEmpleadosEventuales: '',
+  // ── Solicitud ──
+  monto: '',
+  divisa: 'MXN',
+  plazoDeseado: '',
+  destino: '',
+  tasaObjetivo: '',
+  tipoColateral: '',
+  nivelVentasAnuales: '',
+  margenRealUtilidad: '',
+  situacionBuroCredito: '',
+  notas: '',
 }
 
 export default function FullFlow() {
+  const location = useLocation()
   const [currentStep, setCurrentStep] = useState(0)
   const [formData, setFormData] = useState(INITIAL_FORM)
   const [docSubStep, setDocSubStep] = useState('checklist')
@@ -60,17 +69,150 @@ export default function FullFlow() {
   const [uploadResult, setUploadResult] = useState(null)
   const [uploadError, setUploadError] = useState(null)
   const [dragOver, setDragOver] = useState(false)
+  const [extractedFields, setExtractedFields] = useState(null)
+  const [confirmingData, setConfirmingData] = useState(false)
   const fileInputRef = useRef(null)
+
+  // ── API-driven state ──
+  const [clienteId, setClienteId] = useState(null)
+  const [solicitudId, setSolicitudId] = useState(null)
+  const [documentTypes, setDocumentTypes] = useState([])
+  const [uploadedDocs, setUploadedDocs] = useState({}) // { [tipo_documento]: { fileName, status } }
+  const [spreadsheetData, setSpreadsheetData] = useState([])
+  const [scoreData, setScoreData] = useState(null)
+  const [kpisData, setKpisData] = useState([])
+  const [recommendationData, setRecommendationData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [savingApp, setSavingApp] = useState(false)
+
+  // ── Load document types on mount ──
+  useEffect(() => {
+    fetchDocumentTypes()
+      .then(setDocumentTypes)
+      .catch(() => setDocumentTypes([]))
+  }, [])
+
+  // ── Load solicitud if coming from AdminSolicitudes ──
+  useEffect(() => {
+    const solicitudIdFromState = location.state?.solicitudId
+    if (solicitudIdFromState) {
+      setSolicitudId(solicitudIdFromState)
+      fetchSolicitud(solicitudIdFromState)
+        .then((sol) => {
+          // Populate formData with solicitud data
+          setFormData({
+            razonSocial: sol.cliente?.razonSocial || '',
+            nombreComercial: sol.cliente?.nombreComercial || '',
+            telefono: sol.cliente?.telefono || '',
+            celular: sol.cliente?.celular || '',
+            correoElectronico: sol.cliente?.correoElectronico || '',
+            paginaWeb: sol.cliente?.paginaWeb || '',
+            numEmpleadosPermanentes: sol.cliente?.numEmpleadosPermanentes || '',
+            numEmpleadosEventuales: sol.cliente?.numEmpleadosEventuales || '',
+            monto: sol.monto || '',
+            divisa: sol.divisa || 'MXN',
+            plazoDeseado: sol.plazoDeseado || '',
+            destino: sol.destino || '',
+            tasaObjetivo: sol.tasaObjetivo || '',
+            tipoColateral: sol.tipoColateral || '',
+            nivelVentasAnuales: sol.nivelVentasAnuales || '',
+            margenRealUtilidad: sol.margenRealUtilidad || '',
+            situacionBuroCredito: sol.situacionBuroCredito || '',
+            notas: sol.notas || '',
+          })
+          setClienteId(sol.clienteId)
+          // If solicitud already has data, we can go to documents step
+          if (sol.monto && sol.destino) {
+            setCurrentStep(1)
+          }
+        })
+        .catch((err) => {
+          console.error('Error loading solicitud:', err)
+          alert('Error al cargar la solicitud')
+        })
+    }
+  }, [location.state])
+
+  // ── Load dashboard data when entering Step 2 ──
+  const loadDashboardData = useCallback(async (id) => {
+    if (!id) return
+    setLoading(true)
+    try {
+      const [score, kpis, rec, sheet] = await Promise.allSettled([
+        fetchScore(id),
+        fetchKpis(id),
+        fetchRecommendation(id),
+        fetchSpreadsheet(id),
+      ])
+      if (score.status === 'fulfilled') setScoreData(score.value)
+      if (kpis.status === 'fulfilled') setKpisData(kpis.value)
+      if (rec.status === 'fulfilled') setRecommendationData(rec.value)
+      if (sheet.status === 'fulfilled') setSpreadsheetData(sheet.value)
+    } catch (e) {
+      console.error('Error loading dashboard:', e)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  // ── Create cliente + solicitud on Step 0 submit ──
+  const handleCreateApplication = async () => {
+    setSavingApp(true)
+    try {
+      // 1) Create or reuse Cliente con nombre temporal (se actualizará con la Constancia)
+      const cliente = await createCliente({
+        razonSocial: formData.razonSocial,
+        nombreComercial: formData.nombreComercial || null,
+        telefono: formData.telefono || null,
+        celular: formData.celular || null,
+        correoElectronico: formData.correoElectronico || null,
+        paginaWeb: formData.paginaWeb || null,
+        numEmpleadosPermanentes: formData.numEmpleadosPermanentes || null,
+        numEmpleadosEventuales: formData.numEmpleadosEventuales || null,
+      })
+      setClienteId(cliente.id)
+
+      // 2) Create Solicitud linked to the Cliente
+      const sol = await createSolicitud({
+        clienteId: cliente.id,
+        monto: Number(formData.monto),
+        divisa: formData.divisa || 'MXN',
+        plazoDeseado: formData.plazoDeseado || null,
+        destino: formData.destino || null,
+        tasaObjetivo: formData.tasaObjetivo || null,
+        tipoColateral: formData.tipoColateral || null,
+        nivelVentasAnuales: formData.nivelVentasAnuales ? Number(formData.nivelVentasAnuales) : null,
+        margenRealUtilidad: formData.margenRealUtilidad ? Number(formData.margenRealUtilidad) : null,
+        situacionBuroCredito: formData.situacionBuroCredito || null,
+        notas: formData.notas || null,
+      })
+      setSolicitudId(sol.id)
+      setCurrentStep(1)
+    } catch (err) {
+      alert('Error al crear la solicitud: ' + err.message)
+    } finally {
+      setSavingApp(false)
+    }
+  }
+
+  function docStatus(id) {
+    if (uploadedDocs[id]) return uploadedDocs[id]
+    return { status: 'pending', fileName: null }
+  }
 
   const handleFileUpload = async (file) => {
     if (!file) return
     setUploading(true)
     setUploadError(null)
     setUploadResult(null)
+    setExtractedFields(null)
     const formDataUpload = new FormData()
     formDataUpload.append('file', file)
     if (selectedDocType?.id) {
       formDataUpload.append('documentTypeId', selectedDocType.id)
+    }
+    if (solicitudId) {
+      formDataUpload.append('solicitudId', solicitudId)
     }
     try {
       const res = await fetch('/api/upload', { method: 'POST', body: formDataUpload })
@@ -79,6 +221,17 @@ export default function FullFlow() {
         setUploadError(data.error || 'Error al subir el archivo.')
       } else {
         setUploadResult(data)
+        
+        // Si hay datos extraídos (Textract), mostrarlos para validación
+        if (data.extractedData) {
+          setExtractedFields(data.extractedData)
+          setDocSubStep('extraction')
+        } else {
+          // Si no hay datos extraídos, marcar como validado directamente
+          if (selectedDocType?.id) {
+            setUploadedDocs(prev => ({ ...prev, [selectedDocType.id]: { status: 'validated', fileName: data.documento?.nombre_archivo || file.name } }))
+          }
+        }
       }
     } catch (err) {
       setUploadError('Error de conexión con el servidor.')
@@ -87,7 +240,55 @@ export default function FullFlow() {
     }
   }
 
-  const formComplete = formData.applicant.trim() && formData.requestedAmount && formData.termMonths && formData.purpose.trim()
+  const handleConfirmExtractedData = async () => {
+    setConfirmingData(true)
+    try {
+      // Actualizar el cliente con los datos extraídos
+      if (clienteId && extractedFields) {
+        await fetch(`/api/clientes/${clienteId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            razonSocial: extractedFields.razon_social || formData.razonSocial,
+            nombreComercial: extractedFields.nombre_comercial,
+            rfc: extractedFields.rfc,
+            domicilioFiscal: extractedFields.domicilio_fiscal,
+            ciudad: extractedFields.ciudad,
+            estado: extractedFields.estado,
+          }),
+        })
+        
+        // Actualizar formData local para reflejar los cambios
+        setFormData(prev => ({
+          ...prev,
+          razonSocial: extractedFields.razon_social || prev.razonSocial,
+          nombreComercial: extractedFields.nombre_comercial || prev.nombreComercial,
+        }))
+      }
+      
+      // Marcar documento como validado
+      if (selectedDocType?.id) {
+        setUploadedDocs(prev => ({ 
+          ...prev, 
+          [selectedDocType.id]: { 
+            status: 'validated', 
+            fileName: uploadResult?.documento?.nombre_archivo || 'archivo.pdf' 
+          } 
+        }))
+      }
+      
+      // Volver al checklist
+      setDocSubStep('checklist')
+      setExtractedFields(null)
+    } catch (err) {
+      alert('Error al confirmar los datos: ' + err.message)
+    } finally {
+      setConfirmingData(false)
+    }
+  }
+
+  // Form validation: nombre temporal, monto y destino son requeridos
+  const formComplete = formData.razonSocial?.trim() && formData.monto && formData.destino?.trim()
   const canGoToStep1 = formComplete
   const canGoToStep2 = documentsComplete
 
@@ -99,45 +300,49 @@ export default function FullFlow() {
 
   const buildChartFromRequest = (q) => {
     const id = `chart-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    const scoreData = MOCK_SCORE.scoreBreakdown.map((b) => ({ name: b.name, value: b.score }))
-    const kpiData = MOCK_KPIS.map((k) => ({
+    const sBreakdown = (scoreData?.scoreBreakdown || []).map((b) => ({ name: b.name, value: b.score }))
+    const kpiChartData = kpisData.map((k) => ({
       name: k.name.length > 12 ? k.name.slice(0, 10) + '…' : k.name,
       value: k.format === 'percent' ? (k.value * 100) : (typeof k.value === 'number' ? k.value : 0),
     }))
     if ((q.includes('gráfico') || q.includes('grafico') || q.includes('gráfica') || q.includes('grafica') || q.includes('chart') || q.includes('graph')) && (q.includes('score') || q.includes('desglose') || q.includes('clasificación'))) {
       if (q.includes('pie') || q.includes('circular') || q.includes('pastel'))
-        return { id, type: 'pie', title: 'Desglose del score', data: scoreData }
-      return { id, type: 'bar', title: 'Desglose del score (Liquidez, Rentabilidad, Buró, ESG)', data: scoreData }
+        return { id, type: 'pie', title: 'Desglose del score', data: sBreakdown }
+      return { id, type: 'bar', title: 'Desglose del score (Liquidez, Rentabilidad, Buró, ESG)', data: sBreakdown }
     }
     if ((q.includes('gráfico') || q.includes('grafico') || q.includes('gráfica') || q.includes('grafica') || q.includes('chart')) && (q.includes('kpi') || q.includes('indicador')))
-      return { id, type: 'bar', title: 'Indicadores financieros', data: kpiData }
+      return { id, type: 'bar', title: 'Indicadores financieros', data: kpiChartData }
     return null
   }
 
   const getMockReply = (question) => {
     const q = question.toLowerCase()
-    const applicant = formData.applicant || 'el solicitante'
-    const amount = formData.requestedAmount ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(Number(formData.requestedAmount)) : 'el monto solicitado'
-    const purpose = formData.purpose || 'el propósito indicado'
-    const term = formData.termMonths || '—'
+    const applicant = formData.razonSocial || 'el solicitante'
+    const amount = formData.monto ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: formData.divisa || 'MXN', maximumFractionDigits: 0 }).format(Number(formData.monto)) : 'el monto solicitado'
+    const purpose = formData.destino || 'el propósito indicado'
+    const term = formData.plazoDeseado || '—'
     const chart = buildChartFromRequest(q)
     if (chart)
       return { reply: `Puedo añadir este gráfico al dashboard: **${chart.title}**. ¿Quieres que lo agregue?`, chart }
+    const sc = scoreData || {}
+    const bd = sc.scoreBreakdown || []
+    const rc = recommendationData || {}
+    const kp = kpisData || []
     if (q.includes('score') || q.includes('clasificación') || q.includes('calificación') || q.includes('riesgo'))
-      return { reply: `La clasificación actual es **${MOCK_SCORE.grade}** (${MOCK_SCORE.gradeLabel}). El score compuesto es ${MOCK_SCORE.composite}/100. El desglose es: Liquidez ${MOCK_SCORE.scoreBreakdown[0].score}, Rentabilidad ${MOCK_SCORE.scoreBreakdown[1].score}, Buró ${MOCK_SCORE.scoreBreakdown[2].score}, ESG ${MOCK_SCORE.scoreBreakdown[3].score}. Buró en rango ${MOCK_SCORE.bureauBand}.` }
+      return { reply: `La clasificación actual es **${sc.grade ?? '—'}** (${sc.gradeLabel ?? '—'}). El score compuesto es ${sc.composite ?? '—'}/100. El desglose es: ${bd.map(b => `${b.name} ${b.score}`).join(', ')}. Buró en rango ${sc.bureauBand ?? '—'}.` }
     if (q.includes('dscr') || q.includes('capacidad de pago'))
-      return { reply: `El DSCR (Debt Service Coverage Ratio) de esta solicitud es **${MOCK_KPIS.find(k => k.name === 'DSCR')?.value ?? '—'}**. El benchmark mínimo es 1.2; está por encima, lo que indica capacidad adecuada para cubrir el servicio de la deuda.` }
+      return { reply: `El DSCR (Debt Service Coverage Ratio) de esta solicitud es **${kp.find(k => k.name === 'DSCR')?.value ?? '—'}**. El benchmark mínimo es 1.2; está por encima, lo que indica capacidad adecuada para cubrir el servicio de la deuda.` }
     if (q.includes('recomendación') || q.includes('recomienda') || q.includes('aprobar'))
-      return { reply: `El sistema recomienda **aprobar con condiciones**. Monto sugerido: ${new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(MOCK_RECOMMENDATION.suggestedAmount)}, plazo ${MOCK_RECOMMENDATION.suggestedTermMonths} meses, tasa ${MOCK_RECOMMENDATION.suggestedRate}. Condiciones: ${MOCK_RECOMMENDATION.conditions.join(' ')} Nota del analista: "${MOCK_RECOMMENDATION.analystNotes}"` }
+      return { reply: `El sistema recomienda **aprobar con condiciones**. Monto sugerido: ${rc.suggestedAmount ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(rc.suggestedAmount) : '—'}, plazo ${rc.suggestedTermMonths ?? '—'} meses, tasa ${rc.suggestedRate ?? '—'}. Condiciones: ${(rc.conditions || []).join(' ')} Nota del analista: "${rc.analystNotes ?? ''}"` }
     if (q.includes('monto') || q.includes('cantidad') || q.includes('solicit'))
-      return { reply: `${applicant} solicita **${amount}** a **${term}** meses para: ${purpose}. El monto sugerido por el sistema es ${new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(MOCK_RECOMMENDATION.suggestedAmount)}.` }
+      return { reply: `${applicant} solicita **${amount}** a **${term}** para: ${purpose}. El monto sugerido por el sistema es ${rc.suggestedAmount ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: formData.divisa || 'MXN', maximumFractionDigits: 0 }).format(rc.suggestedAmount) : '—'}.` }
     if (q.includes('kpi') || q.includes('indicador') || q.includes('ratio') || q.includes('roe') || q.includes('liquidez') || q.includes('deuda'))
-      return { reply: `Indicadores actuales: Razón Circulante ${MOCK_KPIS.find(k => k.name === 'Razón Circulante')?.value ?? '—'}, DSCR ${MOCK_KPIS.find(k => k.name === 'DSCR')?.value ?? '—'}, Deuda/EBIT ${MOCK_KPIS.find(k => k.name === 'Deuda/EBIT')?.value ?? '—'}, ROE ${(MOCK_KPIS.find(k => k.name === 'ROE')?.value * 100)?.toFixed(2) ?? '—'}%, Margen Neto ${(MOCK_KPIS.find(k => k.name === 'Margen Neto')?.value * 100)?.toFixed(2) ?? '—'}%. Todos cumplen benchmark excepto donde se indica.` }
+      return { reply: `Indicadores actuales: Razón Circulante ${kp.find(k => k.name === 'Razón Circulante')?.value ?? '—'}, DSCR ${kp.find(k => k.name === 'DSCR')?.value ?? '—'}, Deuda/EBIT ${kp.find(k => k.name === 'Deuda/EBIT')?.value ?? '—'}, ROE ${kp.find(k => k.name === 'ROE')?.value != null ? (kp.find(k => k.name === 'ROE').value * 100).toFixed(2) : '—'}%, Margen Neto ${kp.find(k => k.name === 'Margen Neto')?.value != null ? (kp.find(k => k.name === 'Margen Neto').value * 100).toFixed(2) : '—'}%. Todos cumplen benchmark excepto donde se indica.` }
     if (q.includes('buró') || q.includes('buro'))
-      return { reply: `El score de Buró de Crédito está en el rango **${MOCK_SCORE.bureauBand}** (puntuación ${MOCK_SCORE.bureauScore}). Representa el 15% del score compuesto y en este caso está en nivel de riesgo medio.` }
+      return { reply: `El score de Buró de Crédito está en el rango **${sc.bureauBand ?? '—'}** (puntuación ${sc.bureauScore ?? '—'}). Representa el 15% del score compuesto y en este caso está en nivel de riesgo medio.` }
     if (q.includes('condiciones') || q.includes('covenant'))
-      return { reply: `Condiciones sugeridas para la aprobación: ${MOCK_RECOMMENDATION.conditions.map((c, i) => `${i + 1}. ${c}`).join(' ')}` }
-    return { reply: `Tengo acceso a los datos de esta evaluación: solicitante (${applicant}), monto y plazo, score ${MOCK_SCORE.grade}, KPIs y recomendación. Puedes preguntar por score, DSCR, recomendación, monto, KPIs o condiciones. También puedo **generar gráficos**` }
+      return { reply: `Condiciones sugeridas para la aprobación: ${(rc.conditions || []).map((c, i) => `${i + 1}. ${c}`).join(' ')}` }
+    return { reply: `Tengo acceso a los datos de esta evaluación: solicitante (${applicant}), monto y plazo, score ${sc.grade ?? '—'}, KPIs y recomendación. Puedes preguntar por score, DSCR, recomendación, monto, KPIs o condiciones. También puedo **generar gráficos**` }
   }
 
   const sendChatMessage = () => {
@@ -171,6 +376,13 @@ export default function FullFlow() {
     setChatMessages([])
     setChatInput('')
     setChartWidgets([])
+    setClienteId(null)
+    setSolicitudId(null)
+    setUploadedDocs({})
+    setSpreadsheetData([])
+    setScoreData(null)
+    setKpisData([])
+    setRecommendationData(null)
   }
 
   return (
@@ -220,127 +432,148 @@ export default function FullFlow() {
         <div className="space-y-6">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Datos de la solicitud</h1>
-            <p className="text-slate-600 mt-1">Información que no se obtiene de los documentos; complétala antes de subir archivos.</p>
+            <p className="text-slate-600 mt-1">Completa la información de la solicitud. La Razón Social oficial se actualizará al procesar la Constancia de Situación Fiscal.</p>
+            {formData.razonSocial && (
+              <p className="text-sm text-slate-500 mt-2">Cliente: <strong>{formData.razonSocial}</strong></p>
+            )}
           </div>
 
           <form
-            onSubmit={(e) => { e.preventDefault(); if (formComplete) setCurrentStep(1) }}
-            className="bg-white rounded-xl border border-slate-200 p-6 space-y-6"
+            onSubmit={(e) => { e.preventDefault(); if (formComplete) handleCreateApplication() }}
+            className="space-y-6"
           >
-            <div className="grid sm:grid-cols-2 gap-6">
-              <div>
-                <label htmlFor="applicant" className="block text-sm font-medium text-slate-700 mb-1">Solicitante / Organización *</label>
-                <input
-                  id="applicant"
-                  type="text"
-                  value={formData.applicant}
-                  onChange={(e) => updateForm('applicant', e.target.value)}
-                  placeholder="Nombre de la organización o razón social"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500"
-                />
+            {/* ── Sección 1: Datos del Cliente (Empresa) ── */}
+            <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
+              <h2 className="text-lg font-semibold text-slate-800 border-b border-slate-100 pb-2">Datos de la empresa</h2>
+              
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                <p><strong>Nota:</strong> La Razón Social oficial se extraerá de la Constancia de Situación Fiscal. Por ahora, ingresa un nombre temporal para identificar esta solicitud.</p>
               </div>
+
               <div>
-                <label htmlFor="organizationType" className="block text-sm font-medium text-slate-700 mb-1">Tipo de organización</label>
-                <select
-                  id="organizationType"
-                  value={formData.organizationType}
-                  onChange={(e) => updateForm('organizationType', e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500"
-                >
-                  <option value="">Seleccionar</option>
-                  <option value="OSC">OSC / A.C.</option>
-                  <option value="Fundacion">Fundación</option>
-                  <option value="Empresa">Empresa</option>
-                  <option value="Cooperativa">Cooperativa</option>
-                  <option value="Otro">Otro</option>
-                </select>
+                <label htmlFor="razonSocial" className="block text-sm font-medium text-slate-700 mb-1">
+                  Nombre del cliente / Identificador temporal
+                </label>
+                <input 
+                  id="razonSocial" 
+                  type="text" 
+                  value={formData.razonSocial} 
+                  onChange={(e) => updateForm('razonSocial', e.target.value)} 
+                  placeholder="Ej. Empresa Verde, Cliente ABC, etc." 
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500" 
+                />
+                <p className="text-xs text-slate-500 mt-1">Este nombre te ayudará a identificar la solicitud mientras subes documentos. Se actualizará con la razón social oficial de la Constancia.</p>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-5">
+                <div>
+                  <label htmlFor="correoElectronico" className="block text-sm font-medium text-slate-700 mb-1">Correo electrónico</label>
+                  <input id="correoElectronico" type="email" value={formData.correoElectronico} onChange={(e) => updateForm('correoElectronico', e.target.value)} placeholder="contacto@empresa.com" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500" />
+                </div>
+                <div>
+                  <label htmlFor="paginaWeb" className="block text-sm font-medium text-slate-700 mb-1">Página web</label>
+                  <input id="paginaWeb" type="url" value={formData.paginaWeb} onChange={(e) => updateForm('paginaWeb', e.target.value)} placeholder="https://www.empresa.com" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500" />
+                </div>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-5">
+                <div>
+                  <label htmlFor="telefono" className="block text-sm font-medium text-slate-700 mb-1">Teléfono</label>
+                  <input id="telefono" type="tel" value={formData.telefono} onChange={(e) => updateForm('telefono', e.target.value)} placeholder="Ej. 55 1234 5678" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500" />
+                </div>
+                <div>
+                  <label htmlFor="celular" className="block text-sm font-medium text-slate-700 mb-1">Celular</label>
+                  <input id="celular" type="tel" value={formData.celular} onChange={(e) => updateForm('celular', e.target.value)} placeholder="Ej. 55 9876 5432" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500" />
+                </div>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-5">
+                <div>
+                  <label htmlFor="numEmpleadosPermanentes" className="block text-sm font-medium text-slate-700 mb-1">Empleados permanentes</label>
+                  <input id="numEmpleadosPermanentes" type="number" min="0" value={formData.numEmpleadosPermanentes} onChange={(e) => updateForm('numEmpleadosPermanentes', e.target.value)} placeholder="Ej. 25" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500" />
+                </div>
+                <div>
+                  <label htmlFor="numEmpleadosEventuales" className="block text-sm font-medium text-slate-700 mb-1">Empleados eventuales</label>
+                  <input id="numEmpleadosEventuales" type="number" min="0" value={formData.numEmpleadosEventuales} onChange={(e) => updateForm('numEmpleadosEventuales', e.target.value)} placeholder="Ej. 10" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500" />
+                </div>
               </div>
             </div>
 
-            <div className="grid sm:grid-cols-2 gap-6">
-              <div>
-                <label htmlFor="requestedAmount" className="block text-sm font-medium text-slate-700 mb-1">Monto solicitado (MXN) *</label>
-                <input
-                  id="requestedAmount"
-                  type="number"
-                  min="1"
-                  value={formData.requestedAmount}
-                  onChange={(e) => updateForm('requestedAmount', e.target.value)}
-                  placeholder="Ej. 850000"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500"
-                />
+            {/* ── Sección 2: Datos de la Solicitud de Crédito ── */}
+            <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
+              <h2 className="text-lg font-semibold text-slate-800 border-b border-slate-100 pb-2">Solicitud de crédito</h2>
+
+              <div className="grid sm:grid-cols-3 gap-5">
+                <div>
+                  <label htmlFor="monto" className="block text-sm font-medium text-slate-700 mb-1">Monto solicitado *</label>
+                  <input id="monto" type="number" min="1" value={formData.monto} onChange={(e) => updateForm('monto', e.target.value)} placeholder="Ej. 850000" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500" />
+                </div>
+                <div>
+                  <label htmlFor="divisa" className="block text-sm font-medium text-slate-700 mb-1">Divisa</label>
+                  <select id="divisa" value={formData.divisa} onChange={(e) => updateForm('divisa', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500">
+                    <option value="MXN">MXN — Peso mexicano</option>
+                    <option value="USD">USD — Dólar estadounidense</option>
+                    <option value="EUR">EUR — Euro</option>
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="plazoDeseado" className="block text-sm font-medium text-slate-700 mb-1">Plazo deseado</label>
+                  <input id="plazoDeseado" type="text" value={formData.plazoDeseado} onChange={(e) => updateForm('plazoDeseado', e.target.value)} placeholder="Ej. 24 meses" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500" />
+                </div>
               </div>
+
+              <div className="grid sm:grid-cols-2 gap-5">
+                <div>
+                  <label htmlFor="destino" className="block text-sm font-medium text-slate-700 mb-1">Destino del crédito *</label>
+                  <input id="destino" type="text" value={formData.destino} onChange={(e) => updateForm('destino', e.target.value)} placeholder="Ej. Capital de trabajo, equipo, infraestructura" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500" />
+                </div>
+                <div>
+                  <label htmlFor="tasaObjetivo" className="block text-sm font-medium text-slate-700 mb-1">Tasa objetivo</label>
+                  <input id="tasaObjetivo" type="text" value={formData.tasaObjetivo} onChange={(e) => updateForm('tasaObjetivo', e.target.value)} placeholder="Ej. TIIE + 4%" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500" />
+                </div>
+              </div>
+
               <div>
-                <label htmlFor="termMonths" className="block text-sm font-medium text-slate-700 mb-1">Plazo (meses) *</label>
-                <input
-                  id="termMonths"
-                  type="number"
-                  min="1"
-                  max="120"
-                  value={formData.termMonths}
-                  onChange={(e) => updateForm('termMonths', e.target.value)}
-                  placeholder="Ej. 24"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500"
-                />
+                <label htmlFor="tipoColateral" className="block text-sm font-medium text-slate-700 mb-1">Tipo de colateral</label>
+                <input id="tipoColateral" type="text" value={formData.tipoColateral} onChange={(e) => updateForm('tipoColateral', e.target.value)} placeholder="Ej. Inmueble, aval personal, garantía líquida" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500" />
               </div>
             </div>
 
-            <div>
-              <label htmlFor="purpose" className="block text-sm font-medium text-slate-700 mb-1">Propósito / Destino del crédito *</label>
-              <input
-                id="purpose"
-                type="text"
-                value={formData.purpose}
-                onChange={(e) => updateForm('purpose', e.target.value)}
-                placeholder="Ej. Capital de trabajo y equipo"
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500"
-              />
-            </div>
+            {/* ── Sección 3: Información cuantitativa adicional ── */}
+            <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
+              <h2 className="text-lg font-semibold text-slate-800 border-b border-slate-100 pb-2">Información cuantitativa</h2>
 
-            <div className="grid sm:grid-cols-2 gap-6">
-              <div>
-                <label htmlFor="contactEmail" className="block text-sm font-medium text-slate-700 mb-1">Email de contacto</label>
-                <input
-                  id="contactEmail"
-                  type="email"
-                  value={formData.contactEmail}
-                  onChange={(e) => updateForm('contactEmail', e.target.value)}
-                  placeholder="contacto@organizacion.org"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500"
-                />
+              <div className="grid sm:grid-cols-3 gap-5">
+                <div>
+                  <label htmlFor="nivelVentasAnuales" className="block text-sm font-medium text-slate-700 mb-1">Nivel de ventas anuales</label>
+                  <input id="nivelVentasAnuales" type="number" min="0" value={formData.nivelVentasAnuales} onChange={(e) => updateForm('nivelVentasAnuales', e.target.value)} placeholder="Ej. 5000000" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500" />
+                </div>
+                <div>
+                  <label htmlFor="margenRealUtilidad" className="block text-sm font-medium text-slate-700 mb-1">Margen real de utilidad (%)</label>
+                  <input id="margenRealUtilidad" type="number" step="0.01" min="0" max="100" value={formData.margenRealUtilidad} onChange={(e) => updateForm('margenRealUtilidad', e.target.value)} placeholder="Ej. 12.5" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500" />
+                </div>
+                <div>
+                  <label htmlFor="situacionBuroCredito" className="block text-sm font-medium text-slate-700 mb-1">Situación buró de crédito</label>
+                  <select id="situacionBuroCredito" value={formData.situacionBuroCredito} onChange={(e) => updateForm('situacionBuroCredito', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500">
+                    <option value="">Seleccionar</option>
+                    <option value="sin_atrasos">Sin atrasos</option>
+                    <option value="atrasos_menores">Atrasos menores (1-30 días)</option>
+                    <option value="atrasos_moderados">Atrasos moderados (31-90 días)</option>
+                    <option value="cartera_vencida">Cartera vencida (90+ días)</option>
+                    <option value="sin_historial">Sin historial</option>
+                  </select>
+                </div>
               </div>
-              <div>
-                <label htmlFor="contactPhone" className="block text-sm font-medium text-slate-700 mb-1">Teléfono</label>
-                <input
-                  id="contactPhone"
-                  type="tel"
-                  value={formData.contactPhone}
-                  onChange={(e) => updateForm('contactPhone', e.target.value)}
-                  placeholder="Ej. 55 1234 5678"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500"
-                />
-              </div>
-            </div>
 
-            <div>
-              <label htmlFor="notes" className="block text-sm font-medium text-slate-700 mb-1">Observaciones</label>
-              <textarea
-                id="notes"
-                rows={2}
-                value={formData.notes}
-                onChange={(e) => updateForm('notes', e.target.value)}
-                placeholder="Información adicional que no proviene de los documentos"
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500 resize-none"
-              />
+              <div>
+                <label htmlFor="notas" className="block text-sm font-medium text-slate-700 mb-1">Observaciones</label>
+                <textarea id="notas" rows={2} value={formData.notas} onChange={(e) => updateForm('notas', e.target.value)} placeholder="Información adicional relevante" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500 resize-none" />
+              </div>
             </div>
 
             <div className="flex justify-end pt-2">
-              <button
-                type="submit"
-                disabled={!formComplete}
-                className="px-5 py-2.5 bg-pontifex-600 text-white rounded-lg font-medium hover:bg-pontifex-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Continuar a documentos →
+              <button type="submit" disabled={!formComplete || savingApp} className="px-5 py-2.5 bg-pontifex-600 text-white rounded-lg font-medium hover:bg-pontifex-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                {savingApp ? 'Guardando…' : 'Continuar a documentos →'}
               </button>
             </div>
           </form>
@@ -368,34 +601,41 @@ export default function FullFlow() {
             <>
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                  <span className="font-medium text-slate-800">Solicitud — {formData.applicant || 'Solicitante'}</span>
+                  <span className="font-medium text-slate-800">Solicitud — {formData.razonSocial || 'Solicitante'}</span>
                   <span className="text-sm text-slate-600">
-                    {MOCK_APPLICATION.documentsStatus.validated}/{MOCK_APPLICATION.documentsStatus.total} validados
+                    {Object.values(uploadedDocs).filter(d => d.status === 'validated').length}/{documentTypes.reduce((acc, cat) => acc + (cat.tipos?.length || 0), 0)} validados
                   </span>
                 </div>
-                <ul className="divide-y divide-slate-100">
-                  {DOCUMENT_TYPES.map((doc) => {
-                    const s = docStatus(doc.id)
-                    return (
-                      <li key={doc.id} className="flex items-center gap-4 px-4 py-3 hover:bg-slate-50/50">
-                        <span className="w-6">
-                          {s.status === 'validated' && <span className="text-emerald-500">✓</span>}
-                          {s.status === 'pending_review' && <span className="text-amber-500">◐</span>}
-                          {s.status === 'pending' && <span className="text-slate-300">○</span>}
-                        </span>
-                        <span className="flex-1 text-slate-800">{doc.label}</span>
-                        {s.fileName && <span className="text-sm text-slate-500 font-mono">{s.fileName}</span>}
-                        <button
-                          type="button"
-                          onClick={() => { setSelectedDocType(doc); setDocSubStep('upload') }}
-                          className="text-sm font-medium text-pontifex-600 hover:text-pontifex-700"
-                        >
-                          {s.status === 'pending' ? 'Subir' : 'Reemplazar'}
-                        </button>
-                      </li>
-                    )
-                  })}
-                </ul>
+                {documentTypes.map((categoria) => (
+                  <div key={categoria.id}>
+                    <div className="px-4 py-2 bg-slate-100 border-b border-slate-200">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">{categoria.nombre}</span>
+                    </div>
+                    <ul className="divide-y divide-slate-100">
+                      {(categoria.tipos || []).map((doc) => {
+                        const s = docStatus(doc.id)
+                        return (
+                          <li key={doc.id} className="flex items-center gap-4 px-4 py-3 hover:bg-slate-50/50">
+                            <span className="w-6">
+                              {s.status === 'validated' && <span className="text-emerald-500">✓</span>}
+                              {s.status === 'pending_review' && <span className="text-amber-500">◐</span>}
+                              {s.status === 'pending' && <span className="text-slate-300">○</span>}
+                            </span>
+                            <span className="flex-1 text-slate-800">{doc.label}</span>
+                            {s.fileName && <span className="text-sm text-slate-500 font-mono">{s.fileName}</span>}
+                            <button
+                              type="button"
+                              onClick={() => { setSelectedDocType(doc); setDocSubStep('upload') }}
+                              className="text-sm font-medium text-pontifex-600 hover:text-pontifex-700"
+                            >
+                              {s.status === 'pending' ? 'Subir' : 'Reemplazar'}
+                            </button>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </div>
+                ))}
               </div>
 
               {/* Spreadsheet: key values extracted via OCR — view + download */}
@@ -408,10 +648,10 @@ export default function FullFlow() {
                   <button
                     type="button"
                     onClick={() => {
-                      const baseName = formData.applicant?.replace(/\s+/g, '_') || 'solicitud'
+                      const baseName = formData.razonSocial?.replace(/\s+/g, '_') || 'solicitud'
                       downloadMasterClientXlsx(
                         formData,
-                        MOCK_EXTRACTED_SPREADSHEET,
+                        spreadsheetData,
                         `master_client_pontifex_${baseName}.xlsx`
                       )
                     }}
@@ -431,7 +671,7 @@ export default function FullFlow() {
                       </tr>
                     </thead>
                     <tbody>
-                      {MOCK_EXTRACTED_SPREADSHEET.map((row, i) => (
+                      {spreadsheetData.map((row, i) => (
                         <tr key={i} className="border-b border-slate-100 hover:bg-slate-50/50">
                           <td className="px-4 py-2 text-slate-800">{row.documento}</td>
                           <td className="px-4 py-2 text-slate-700">{row.campo}</td>
@@ -447,7 +687,7 @@ export default function FullFlow() {
               <div className="flex justify-end">
                 <button
                   type="button"
-                  onClick={() => { setDocumentsComplete(true); setCurrentStep(2) }}
+                  onClick={() => { setDocumentsComplete(true); setCurrentStep(2); loadDashboardData(solicitudId) }}
                   className="px-5 py-2.5 bg-pontifex-600 text-white rounded-lg font-medium hover:bg-pontifex-700"
                 >
                   Documentos listos → Ir a evaluación
@@ -494,7 +734,10 @@ export default function FullFlow() {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                       </svg>
-                      <p className="text-slate-600">Subiendo archivo a S3...</p>
+                      <p className="text-slate-600 font-medium">Subiendo archivo...</p>
+                      {selectedDocType?.id === 'constancia_situacion_fiscal' && (
+                        <p className="text-sm text-slate-500">Extrayendo datos con Textract (puede tardar 10-30 segundos)</p>
+                      )}
                     </div>
                   ) : (
                     <>
@@ -535,46 +778,152 @@ export default function FullFlow() {
             </>
           )}
 
-          {docSubStep === 'extraction' && (
+          {docSubStep === 'extraction' && extractedFields && (
             <>
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                  <span className="font-medium text-slate-800">Resultado de extracción</span>
-                  <span className="text-sm text-slate-600">Confianza: {(MOCK_EXTRACTION_RESULT.confidence * 100).toFixed(0)}%</span>
-                </div>
-                <div className="p-4">
-                  <div className="flex items-center gap-3 mb-4">
-                    <span className="px-2 py-1 rounded text-sm font-medium bg-emerald-100 text-emerald-800">Validado</span>
-                    <span className="text-sm text-slate-600">Tipo detectado: Estados Financieros</span>
+                  <div>
+                    <span className="font-medium text-slate-800">Datos extraídos de la Constancia</span>
+                    <p className="text-xs text-slate-500 mt-0.5">Revisa y confirma los datos antes de guardarlos</p>
                   </div>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-slate-500 border-b border-slate-100">
-                        <th className="pb-2 font-medium">Campo</th>
-                        <th className="pb-2 font-medium">Valor</th>
-                        <th className="pb-2 font-medium w-20">Estado</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {MOCK_EXTRACTION_RESULT.extractedFields.map((row, i) => (
-                        <tr key={i} className="border-b border-slate-50">
-                          <td className="py-2 text-slate-800">{row.name}</td>
-                          <td className="py-2 font-mono text-slate-700">{row.value}</td>
-                          <td className="py-2">{row.valid ? <span className="text-emerald-600">✓</span> : 'Revisar'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <span className="px-2 py-1 rounded text-sm font-medium bg-emerald-100 text-emerald-800">
+                    ✓ Extraído con Textract
+                  </span>
                 </div>
-                <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
-                  <button type="button" onClick={() => setDocSubStep('checklist')} className="px-4 py-2 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-100">Cerrar</button>
-                  <button
-                    type="button"
-                    onClick={() => { setDocSubStep('checklist'); setDocumentsComplete(true) }}
-                    className="px-4 py-2 bg-pontifex-600 text-white rounded-lg font-medium hover:bg-pontifex-700"
+                <div className="p-6">
+                  <div className="space-y-4">
+                    {/* Razón Social */}
+                    {extractedFields.razon_social && (
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Razón Social</label>
+                        <input
+                          type="text"
+                          value={extractedFields.razon_social}
+                          onChange={(e) => setExtractedFields({ ...extractedFields, razon_social: e.target.value })}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800"
+                        />
+                      </div>
+                    )}
+
+                    {/* RFC */}
+                    {extractedFields.rfc && (
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">RFC</label>
+                        <input
+                          type="text"
+                          value={extractedFields.rfc}
+                          onChange={(e) => setExtractedFields({ ...extractedFields, rfc: e.target.value })}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800"
+                        />
+                      </div>
+                    )}
+
+                    {/* Domicilio Fiscal */}
+                    {extractedFields.domicilio_fiscal && (
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Domicilio Fiscal</label>
+                        <textarea
+                          rows={2}
+                          value={extractedFields.domicilio_fiscal}
+                          onChange={(e) => setExtractedFields({ ...extractedFields, domicilio_fiscal: e.target.value })}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 resize-none"
+                        />
+                      </div>
+                    )}
+
+                    {/* Ciudad y Estado */}
+                    <div className="grid grid-cols-2 gap-4">
+                      {extractedFields.ciudad && (
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-1">Ciudad</label>
+                          <input
+                            type="text"
+                            value={extractedFields.ciudad}
+                            onChange={(e) => setExtractedFields({ ...extractedFields, ciudad: e.target.value })}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800"
+                          />
+                        </div>
+                      )}
+                      {extractedFields.estado && (
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-1">Estado</label>
+                          <input
+                            type="text"
+                            value={extractedFields.estado}
+                            onChange={(e) => setExtractedFields({ ...extractedFields, estado: e.target.value })}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Nombre Comercial */}
+                    {extractedFields.nombre_comercial && (
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Nombre Comercial</label>
+                        <input
+                          type="text"
+                          value={extractedFields.nombre_comercial}
+                          onChange={(e) => setExtractedFields({ ...extractedFields, nombre_comercial: e.target.value })}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800"
+                        />
+                      </div>
+                    )}
+
+                    {/* Datos extra del CSF */}
+                    {extractedFields._extra && (
+                      <div className="pt-4 border-t border-slate-200">
+                        <h3 className="text-sm font-semibold text-slate-700 mb-3">Información adicional</h3>
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          {extractedFields._extra.estatus_padron && (
+                            <div>
+                              <span className="text-slate-500">Estatus padrón:</span>
+                              <span className="ml-2 font-medium text-slate-800">{extractedFields._extra.estatus_padron}</span>
+                            </div>
+                          )}
+                          {extractedFields._extra.fecha_inicio_operaciones && (
+                            <div>
+                              <span className="text-slate-500">Inicio operaciones:</span>
+                              <span className="ml-2 font-medium text-slate-800">{extractedFields._extra.fecha_inicio_operaciones}</span>
+                            </div>
+                          )}
+                          {extractedFields._extra.curp && (
+                            <div>
+                              <span className="text-slate-500">CURP:</span>
+                              <span className="ml-2 font-medium text-slate-800">{extractedFields._extra.curp}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
+                  <button 
+                    type="button" 
+                    onClick={() => { setDocSubStep('upload'); setExtractedFields(null) }} 
+                    className="px-4 py-2 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-100"
                   >
-                    Confirmar y usar datos
+                    ← Subir otro archivo
                   </button>
+                  <div className="flex gap-2">
+                    <button 
+                      type="button" 
+                      onClick={() => { setDocSubStep('checklist'); setExtractedFields(null) }} 
+                      className="px-4 py-2 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-100"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmExtractedData}
+                      disabled={confirmingData}
+                      className="px-5 py-2 bg-pontifex-600 text-white rounded-lg font-medium hover:bg-pontifex-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {confirmingData ? 'Confirmando...' : '✓ Confirmar y actualizar cliente'}
+                    </button>
+                  </div>
                 </div>
               </div>
             </>
@@ -590,7 +939,7 @@ export default function FullFlow() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-slate-900">Dashboard de evaluación</h1>
-              <p className="text-slate-600 mt-1">{formData.applicant || 'Solicitante'}</p>
+              <p className="text-slate-600 mt-1">{formData.razonSocial || 'Solicitante'}</p>
             </div>
             <button
               type="button"
@@ -606,28 +955,28 @@ export default function FullFlow() {
             <div className="bg-white rounded-xl border border-slate-200 p-4">
               <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Monto solicitado</p>
               <p className="text-lg font-semibold text-slate-900 mt-1">
-                {formData.requestedAmount ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(Number(formData.requestedAmount)) : '—'}
+                {formData.monto ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: formData.divisa || 'MXN', maximumFractionDigits: 0 }).format(Number(formData.monto)) : '—'}
               </p>
             </div>
             <div className="bg-white rounded-xl border border-slate-200 p-4">
               <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Score</p>
               <p className="text-lg font-semibold text-slate-900 mt-1 flex items-center gap-2">
-                <span className={`inline-flex w-8 h-8 items-center justify-center rounded-lg text-sm font-bold ${GRADE_COLORS[MOCK_SCORE.grade]}`}>
-                  {MOCK_SCORE.grade}
+                <span className={`inline-flex w-8 h-8 items-center justify-center rounded-lg text-sm font-bold ${GRADE_COLORS[scoreData?.grade] || 'bg-slate-100 text-slate-400'}`}>
+                  {scoreData?.grade ?? '—'}
                 </span>
-                {MOCK_SCORE.gradeLabel}
+                {scoreData?.gradeLabel ?? ''}
               </p>
             </div>
             <div className="bg-white rounded-xl border border-slate-200 p-4">
               <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">DSCR</p>
               <p className="text-lg font-semibold text-emerald-600 mt-1">
-                {MOCK_KPIS.find(k => k.name === 'DSCR')?.value ?? '—'}
+                {kpisData.find(k => k.name === 'DSCR')?.value ?? '—'}
               </p>
             </div>
             <div className="bg-white rounded-xl border border-slate-200 p-4">
               <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Documentos</p>
               <p className="text-lg font-semibold text-slate-900 mt-1">
-                {MOCK_APPLICATION.documentsStatus.validated}/{MOCK_APPLICATION.documentsStatus.total} validados
+                {Object.values(uploadedDocs).filter(d => d.status === 'validated').length}/{documentTypes.reduce((acc, cat) => acc + (cat.tipos?.length || 0), 0)} validados
               </p>
             </div>
           </div>
@@ -638,17 +987,17 @@ export default function FullFlow() {
             <div className="lg:row-span-2 bg-white rounded-xl border border-slate-200 p-5">
               <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">Clasificación</h2>
               <div className="flex items-center gap-4 mb-6">
-                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-3xl font-bold ${GRADE_COLORS[MOCK_SCORE.grade]}`}>
-                  {MOCK_SCORE.grade}
+                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-3xl font-bold ${GRADE_COLORS[scoreData?.grade] || 'bg-slate-100 text-slate-400'}`}>
+                  {scoreData?.grade ?? '—'}
                 </div>
                 <div>
-                  <p className="font-semibold text-slate-900 text-lg">{MOCK_SCORE.gradeLabel}</p>
-                  <p className="text-sm text-slate-500">Compuesto {MOCK_SCORE.composite}/100</p>
-                  <p className="text-xs text-slate-400 mt-0.5">{MOCK_SCORE.bureauBand}</p>
+                  <p className="font-semibold text-slate-900 text-lg">{scoreData?.gradeLabel ?? ''}</p>
+                  <p className="text-sm text-slate-500">Compuesto {scoreData?.composite ?? '—'}/100</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{scoreData?.bureauBand ?? ''}</p>
                 </div>
               </div>
               <div className="space-y-3">
-                {MOCK_SCORE.scoreBreakdown.map((b, i) => (
+                {(scoreData?.scoreBreakdown || []).map((b, i) => (
                   <div key={i}>
                     <div className="flex justify-between text-xs mb-1">
                       <span className="text-slate-600">{b.name}</span>
@@ -667,18 +1016,18 @@ export default function FullFlow() {
               <div className="bg-white rounded-xl border border-slate-200 p-5">
                 <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Solicitud</h2>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
-                  <div><span className="text-slate-500 block">Plazo</span><span className="font-medium">{formData.termMonths || '—'} meses</span></div>
-                  <div><span className="text-slate-500 block">Destino</span><span className="font-medium">{formData.purpose || '—'}</span></div>
-                  <div><span className="text-slate-500 block">Monto sugerido</span><span className="font-medium">{new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(MOCK_RECOMMENDATION.suggestedAmount)}</span></div>
+                  <div><span className="text-slate-500 block">Plazo</span><span className="font-medium">{formData.plazoDeseado || '—'}</span></div>
+                  <div><span className="text-slate-500 block">Destino</span><span className="font-medium">{formData.destino || '—'}</span></div>
+                  <div><span className="text-slate-500 block">Monto sugerido</span><span className="font-medium">{recommendationData?.suggestedAmount ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: formData.divisa || 'MXN', maximumFractionDigits: 0 }).format(recommendationData.suggestedAmount) : '—'}</span></div>
                 </div>
               </div>
               <div className="bg-white rounded-xl border border-slate-200 p-5">
                 <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Recomendación del sistema</h2>
-                <p className="text-slate-800 font-medium mb-2">Aprobar con condiciones · {MOCK_RECOMMENDATION.suggestedRate}</p>
+                <p className="text-slate-800 font-medium mb-2">{recommendationData?.action === 'approve_conditional' ? 'Aprobar con condiciones' : recommendationData?.action ?? '—'} · {recommendationData?.suggestedRate ?? ''}</p>
                 <ul className="text-sm text-slate-600 space-y-1 list-disc list-inside">
-                  {MOCK_RECOMMENDATION.conditions.map((c, i) => <li key={i}>{c}</li>)}
+                  {(recommendationData?.conditions || []).map((c, i) => <li key={i}>{c}</li>)}
                 </ul>
-                <p className="text-slate-500 italic text-sm mt-3">"{MOCK_RECOMMENDATION.analystNotes}"</p>
+                <p className="text-slate-500 italic text-sm mt-3">"{recommendationData?.analystNotes ?? ''}"</p>
               </div>
             </div>
 
@@ -686,7 +1035,7 @@ export default function FullFlow() {
             <div className="bg-white rounded-xl border border-slate-200 p-5">
               <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Indicadores</h2>
               <div className="space-y-2">
-                {MOCK_KPIS.map((k, i) => (
+                {kpisData.map((k, i) => (
                   <div key={i} className="flex justify-between items-center text-sm">
                     <span className="text-slate-600">{k.name}</span>
                     <span className="font-mono text-slate-800">
@@ -764,21 +1113,21 @@ export default function FullFlow() {
               <div className="flex flex-wrap gap-3">
                 <button
                   type="button"
-                  onClick={() => setDecision('approved')}
+                  onClick={() => { setDecision('approved'); if (solicitudId) submitDecision(solicitudId, { type: 'approved', reason: analystNotes }).catch(console.error) }}
                   className="px-5 py-2.5 rounded-lg font-medium bg-emerald-600 text-white hover:bg-emerald-700"
                 >
                   Aprobar (según recomendación)
                 </button>
                 <button
                   type="button"
-                  onClick={() => setDecision('adjusted')}
+                  onClick={() => { setDecision('adjusted'); if (solicitudId) submitDecision(solicitudId, { type: 'adjusted', reason: analystNotes }).catch(console.error) }}
                   className="px-5 py-2.5 rounded-lg font-medium border border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100"
                 >
                   Aprobar con ajustes
                 </button>
                 <button
                   type="button"
-                  onClick={() => setDecision('rejected')}
+                  onClick={() => { setDecision('rejected'); if (solicitudId) submitDecision(solicitudId, { type: 'rejected', reason: analystNotes }).catch(console.error) }}
                   className="px-5 py-2.5 rounded-lg font-medium border border-red-200 text-red-700 bg-red-50 hover:bg-red-100"
                 >
                   Rechazar

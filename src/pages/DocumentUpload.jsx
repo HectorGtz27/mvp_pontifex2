@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react'
-import { DOCUMENT_TYPES, MOCK_APPLICATION, MOCK_EXTRACTION_RESULT } from '../data/mock'
+import { useState, useRef, useEffect } from 'react'
+import { fetchDocumentTypes } from '../utils/api'
 
 export default function DocumentUpload() {
   const [step, setStep] = useState('checklist') // checklist | upload | extraction
@@ -10,15 +10,15 @@ export default function DocumentUpload() {
   const [uploadError, setUploadError] = useState(null)
   const fileInputRef = useRef(null)
 
-  console.log(`[DocumentUpload] selectedType actual:`, selectedType)
+  const [documentTypes, setDocumentTypes] = useState([])
+  const [uploadedDocs, setUploadedDocs] = useState({})
+
+  useEffect(() => {
+    fetchDocumentTypes().then(setDocumentTypes).catch(() => setDocumentTypes([]))
+  }, [])
 
   const handleFileUpload = async (file) => {
     if (!file) return
-
-    console.log(`\n[DocumentUpload] ▶ INICIANDO handleFileUpload()`)
-    console.log(`[DocumentUpload] File:`, file.name, `(${(file.size / 1024).toFixed(2)} KB)`)
-    console.log(`[DocumentUpload] selectedType:`, selectedType)
-    console.log(`[DocumentUpload] selectedType?.id:`, selectedType?.id)
 
     setUploading(true)
     setUploadError(null)
@@ -26,16 +26,10 @@ export default function DocumentUpload() {
 
     const formData = new FormData()
     formData.append('file', file)
-
-    console.log(`[DocumentUpload] ▶ Agregando documentTypeId a FormData...`)
     if (selectedType?.id) {
       formData.append('documentTypeId', selectedType.id)
-      console.log(`[DocumentUpload] ✓ documentTypeId agregado: "${selectedType.id}"`)
-    } else {
-      console.error(`[DocumentUpload] ✗ selectedType o selectedType.id está vacío`)
     }
 
-    console.log(`[DocumentUpload] ▶ Enviando fetch a /api/upload...`)
     try {
       const res = await fetch('/api/upload', {
         method: 'POST',
@@ -43,17 +37,15 @@ export default function DocumentUpload() {
       })
       const data = await res.json()
 
-      console.log(`[DocumentUpload] ✓ Response recibida:`, data)
-
       if (!res.ok || !data.success) {
-        console.error(`[DocumentUpload] ✗ Error en respuesta:`, data.error)
         setUploadError(data.error || 'Error al subir el archivo.')
       } else {
-        console.log(`[DocumentUpload] ✓ Upload exitoso`)
         setUploadResult(data)
+        if (selectedType?.id) {
+          setUploadedDocs(prev => ({ ...prev, [selectedType.id]: { status: 'validated', fileName: data.fileName } }))
+        }
       }
     } catch (err) {
-      console.error(`[DocumentUpload] ✗ Error de conexión:`, err.message)
       setUploadError('Error de conexión con el servidor.')
     } finally {
       setUploading(false)
@@ -61,9 +53,7 @@ export default function DocumentUpload() {
   }
 
   const docStatus = (id) => {
-    if (id === 'estados_financieros') return { status: 'validated', fileName: 'Estados_Financieros_2024.pdf' }
-    if (['curriculum', 'acta', 'situacion_fiscal'].includes(id)) return { status: 'validated', fileName: `${id}.pdf` }
-    if (id === 'declaraciones') return { status: 'pending_review', fileName: 'Declaraciones_2022-24.pdf' }
+    if (uploadedDocs[id]) return uploadedDocs[id]
     return { status: 'pending', fileName: null }
   }
 
@@ -80,16 +70,13 @@ export default function DocumentUpload() {
         <>
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
             <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-              <span className="font-medium text-slate-800">Solicitud {MOCK_APPLICATION.id}</span>
+              <span className="font-medium text-slate-800">Solicitud</span>
               <span className="text-sm text-slate-600">
-                {MOCK_APPLICATION.documentsStatus.validated}/{MOCK_APPLICATION.documentsStatus.total} validados
-                {MOCK_APPLICATION.documentsStatus.pendingReview > 0 && (
-                  <span className="ml-2 text-amber-600">· {MOCK_APPLICATION.documentsStatus.pendingReview} en revisión</span>
-                )}
+                {Object.values(uploadedDocs).filter(d => d.status === 'validated').length}/{documentTypes.length} validados
               </span>
             </div>
             <ul className="divide-y divide-slate-100">
-              {DOCUMENT_TYPES.map((doc) => {
+              {documentTypes.map((doc) => {
                 const s = docStatus(doc.id)
                 return (
                   <li key={doc.id} className="flex items-center gap-4 px-4 py-3 hover:bg-slate-50/50">
@@ -145,15 +132,7 @@ export default function DocumentUpload() {
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0]
-                console.log(`\n[FileInput] onChange triggered`)
-                console.log(`[FileInput] file:`, file?.name)
-                console.log(`[FileInput] selectedType:`, selectedType)
-                console.log(`[FileInput] selectedType?.id:`, selectedType?.id)
-                if (file && selectedType?.id) {
-                  handleFileUpload(file)
-                } else {
-                  console.error(`[FileInput] ✗ No se puede subir. file="${file?.name}", selectedType.id="${selectedType?.id}"`)
-                }
+                if (file) handleFileUpload(file)
               }}
             />
 
@@ -164,15 +143,7 @@ export default function DocumentUpload() {
                 e.preventDefault()
                 setDragOver(false)
                 const file = e.dataTransfer.files?.[0]
-                console.log(`\n[DragDrop] onDrop triggered`)
-                console.log(`[DragDrop] file:`, file?.name)
-                console.log(`[DragDrop] selectedType:`, selectedType)
-                console.log(`[DragDrop] selectedType?.id:`, selectedType?.id)
-                if (file && selectedType?.id) {
-                  handleFileUpload(file)
-                } else {
-                  console.error(`[DragDrop] ✗ No se puede subir. file="${file?.name}", selectedType.id="${selectedType?.id}"`)
-                }
+                if (file) handleFileUpload(file)
               }}
               className={`border-2 border-dashed rounded-xl p-12 text-center transition-colors ${
                 dragOver ? 'border-pontifex-400 bg-pontifex-50' : 'border-slate-200 bg-slate-50'
@@ -231,20 +202,20 @@ export default function DocumentUpload() {
             <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
               <span className="font-medium text-slate-800">Resultado de extracción</span>
               <span className="text-sm text-slate-600">
-                Archivo: {MOCK_EXTRACTION_RESULT.fileName} · Confianza: {(MOCK_EXTRACTION_RESULT.confidence * 100).toFixed(0)}%
+                Archivo: {uploadResult?.fileName ?? '—'} · Confianza: —
               </span>
             </div>
             <div className="p-4 space-y-4">
               <div className="flex items-center gap-3">
                 <span className={`px-2 py-1 rounded text-sm font-medium ${
-                  MOCK_EXTRACTION_RESULT.status === 'validated'
+                  uploadResult?.status === 'validated'
                     ? 'bg-emerald-100 text-emerald-800'
                     : 'bg-amber-100 text-amber-800'
                 }`}>
-                  {MOCK_EXTRACTION_RESULT.status === 'validated' ? 'Validado' : 'En revisión'}
+                  {uploadResult?.status === 'validated' ? 'Validado' : 'En revisión'}
                 </span>
                 <span className="text-sm text-slate-600">
-                  Tipo detectado: <strong>{DOCUMENT_TYPES.find(d => d.id === MOCK_EXTRACTION_RESULT.suggestedType)?.label}</strong>
+                  Tipo detectado: <strong>{selectedType?.label ?? '—'}</strong>
                 </span>
               </div>
               <table className="w-full text-sm">
@@ -257,7 +228,7 @@ export default function DocumentUpload() {
                   </tr>
                 </thead>
                 <tbody>
-                  {MOCK_EXTRACTION_RESULT.extractedFields.map((row, i) => (
+                  {(uploadResult?.extractedFields || []).map((row, i) => (
                     <tr key={i} className="border-b border-slate-50">
                       <td className="py-2 text-slate-800">{row.name}</td>
                       <td className="py-2 font-mono text-slate-700">{row.value}</td>
@@ -273,9 +244,9 @@ export default function DocumentUpload() {
                   ))}
                 </tbody>
               </table>
-              {MOCK_EXTRACTION_RESULT.validationAlerts?.length > 0 ? (
+              {uploadResult?.validationAlerts?.length > 0 ? (
                 <div className="text-amber-700 text-sm bg-amber-50 p-3 rounded-lg">
-                  {MOCK_EXTRACTION_RESULT.validationAlerts.map((a, i) => <p key={i}>{a}</p>)}
+                  {uploadResult.validationAlerts.map((a, i) => <p key={i}>{a}</p>)}
                 </div>
               ) : (
                 <p className="text-sm text-slate-500">Sin alertas de validación. Los datos se usarán para el cálculo de KPIs.</p>

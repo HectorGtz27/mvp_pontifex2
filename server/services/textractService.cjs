@@ -51,34 +51,19 @@ function createClient() {
 
 /**
  * Analyses a document using FORMS (key-value pairs).
- * Routes to async API for PDFs (supports multiple pages),
- * or sync API for images (single page only).
+ * Best for structured documents like the CSF.
  *
  * @param {Buffer} fileBuffer - File bytes from multer
  * @param {string} mimeType  - MIME type
- * @param {string} s3Key     - S3 object key (required for PDFs)
  * @returns {Promise<Object>} Mapped fields
  */
-async function analyzeDocumentForms(fileBuffer, mimeType, s3Key) {
-  console.log(`\n[Textract/FORMS] ▶ INICIANDO analyzeDocumentForms()`)
-  console.log(`[Textract/FORMS] Buffer: ${fileBuffer.length} bytes, MIME: ${mimeType}, S3Key: ${s3Key}`)
+async function analyzeDocumentForms(fileBuffer, mimeType) {
+  console.log(`[Textract/FORMS] Buffer: ${fileBuffer.length} bytes, MIME: ${mimeType}`)
 
   if (!fileBuffer || fileBuffer.length === 0) {
-    console.error(`[Textract/FORMS] ✗ Buffer está vacío`)
     throw new Error('[Textract] Buffer is empty')
   }
 
-  if (mimeType === 'application/pdf') {
-    if (!s3Key) {
-      console.error(`[Textract/FORMS] ✗ s3Key requerido para PDF pero no fue proporcionado`)
-      throw new Error('[Textract] s3Key is required for PDF documents')
-    }
-    console.log(`[Textract/FORMS] 📄 Detectado PDF - Usando API asíncrona con polling`)
-    return analyzeDocumentFormsAsync(s3Key, process.env.S3_BUCKET_NAME)
-  }
-
-  // Images — use synchronous API (single page only)
-  console.log(`[Textract/FORMS] 🖼️  Detectada imagen - Usando API síncrona`)
   const client = createClient()
 
   const command = new AnalyzeDocumentCommand({
@@ -86,127 +71,13 @@ async function analyzeDocumentForms(fileBuffer, mimeType, s3Key) {
     FeatureTypes: ['FORMS'],
   })
 
-  console.log(`[Textract/FORMS] ▶ Enviando AnalyzeDocument al API de AWS...`)
+  console.log('[Textract/FORMS] Sending AnalyzeDocument...')
   const response = await client.send(command)
 
   const blocks = response.Blocks || []
-  console.log(`[Textract/FORMS] ✓ Respuesta recibida - ${blocks.length} bloques`)
+  console.log(`[Textract/FORMS] Success - ${blocks.length} blocks received`)
 
-  const parsed = parseFormsResponse(blocks)
-  console.log(`[Textract/FORMS] ✓ Parseado exitosamente`)
-  return parsed
-}
-
-/**
- * Async Textract FORMS analysis for PDFs (single- or multi-page).
- * Uses StartDocumentAnalysis + polling with GetDocumentAnalysis.
- * Handles paginated results via NextToken.
- *
- * @param {string} s3Key    - S3 object key
- * @param {string} s3Bucket - S3 bucket name
- * @returns {Promise<Object>} Mapped fields
- */
-async function analyzeDocumentFormsAsync(s3Key, s3Bucket) {
-  const client = createClient()
-  const POLL_INTERVAL_MS = 2000
-  const MAX_ATTEMPTS = 30
-
-  console.log(`\n[Textract/FORMS-Async] ▶ INICIANDO procesamiento asíncrono`)
-  console.log(`[Textract/FORMS-Async] S3Bucket: ${s3Bucket}, S3Key: ${s3Key}`)
-
-  // Start the async job
-  const startCommand = new StartDocumentAnalysisCommand({
-    DocumentLocation: { S3Object: { Bucket: s3Bucket, Name: s3Key } },
-    FeatureTypes: ['FORMS'],
-  })
-
-  console.log(`[Textract/FORMS-Async] ▶ Iniciando job de análisis asíncrono en AWS...`)
-  let startResponse
-  try {
-    startResponse = await client.send(startCommand)
-    console.log(`[Textract/FORMS-Async] ✓ Job iniciado`)
-  } catch (err) {
-    console.error(`[Textract/FORMS-Async] ✗ Error al iniciar job:`, err.message)
-    throw err
-  }
-
-  const jobId = startResponse.JobId
-  console.log(`[Textract/FORMS-Async] JobId: ${jobId}`)
-
-  // Poll until SUCCEEDED or FAILED
-  let attempts = 0
-  let jobStatus = 'IN_PROGRESS'
-  const allBlocks = []
-
-  while (jobStatus === 'IN_PROGRESS' && attempts < MAX_ATTEMPTS) {
-    await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
-    attempts++
-
-    console.log(`[Textract/FORMS-Async] ▶ Poll intento ${attempts}/${MAX_ATTEMPTS}...`)
-
-    let nextToken = undefined
-    let firstPage = true
-    let pageCount = 0
-
-    // Fetch all pages of results for this polling attempt
-    while (firstPage || nextToken) {
-      firstPage = false
-      pageCount++
-      const getCommand = new GetDocumentAnalysisCommand({
-        JobId: jobId,
-        MaxResults: 1000,
-        ...(nextToken ? { NextToken: nextToken } : {}),
-      })
-
-      let getResponse
-      try {
-        getResponse = await client.send(getCommand)
-      } catch (err) {
-        console.error(`[Textract/FORMS-Async] ✗ Error en GetDocumentAnalysis:`, err.message)
-        throw err
-      }
-
-      jobStatus = getResponse.JobStatus
-      console.log(`[Textract/FORMS-Async]   Página ${pageCount}: Status=${jobStatus}`)
-
-      if (jobStatus === 'FAILED') {
-        const errMsg = getResponse.StatusMessage || 'Unknown error'
-        console.error(`[Textract/FORMS-Async] ✗ AWS reportó fallo: ${errMsg}`)
-        throw new Error(`[Textract] Async job failed: ${errMsg}`)
-      }
-
-      if (jobStatus === 'SUCCEEDED') {
-        const blocksInPage = getResponse.Blocks || []
-        console.log(`[Textract/FORMS-Async]   Página ${pageCount}: ${blocksInPage.length} bloques`)
-        allBlocks.push(...blocksInPage)
-        nextToken = getResponse.NextToken
-        if (!nextToken) {
-          console.log(`[Textract/FORMS-Async]   ✓ Fin de paginas (NextToken = undefined)`)
-        }
-      } else {
-        // Still in progress — stop paginating this round and wait
-        console.log(`[Textract/FORMS-Async]   Estado aún "IN_PROGRESS", esperando siguiente poll...`)
-        nextToken = undefined
-      }
-    }
-
-    console.log(`[Textract/FORMS-Async] Poll ${attempts}: ${jobStatus} (${allBlocks.length} bloques acumulados)`)
-  }
-
-  if (jobStatus !== 'SUCCEEDED') {
-    console.error(`[Textract/FORMS-Async] ✗ Job no completó después de ${MAX_ATTEMPTS} intentos. Último status: ${jobStatus}`)
-    throw new Error(`[Textract] Async job timed out after ${MAX_ATTEMPTS} attempts`)
-  }
-
-  console.log(`[Textract/FORMS-Async] ✓ Job COMPLETADO - ${allBlocks.length} bloques totales`)
-
-  if (allBlocks.length === 0) {
-    console.warn(`[Textract/FORMS-Async] ⚠ Advertencia: No se extrajeron bloques del documento`)
-  }
-
-  const parsed = parseFormsResponse(allBlocks)
-  console.log(`[Textract/FORMS-Async] ✓ Parseado exitosamente`)
-  return parsed
+  return parseFormsResponse(blocks)
 }
 
 /**
@@ -219,22 +90,15 @@ async function analyzeDocumentFormsAsync(s3Key, s3Bucket) {
  * 5. Assembles the final empresa-compatible object.
  */
 function parseFormsResponse(blocks) {
-  console.log(`\n[Textract/Parse] ▶ INICIANDO parseFormsResponse()`)
-  console.log(`[Textract/Parse] Bloques totales a procesar: ${blocks.length}`)
-
   const blockMap = {}
   for (const b of blocks) blockMap[b.Id] = b
 
   // Extract raw key-value pairs
   const rawPairs = {}
-  const unmappedKeys = []
 
-  let keyValueCount = 0
   for (const b of blocks) {
     if (b.BlockType !== 'KEY_VALUE_SET') continue
     if (!b.EntityTypes || b.EntityTypes[0] !== 'KEY') continue
-
-    keyValueCount++
 
     // ── Get key text ──
     let keyText = ''
@@ -274,30 +138,15 @@ function parseFormsResponse(blocks) {
       .trim()
 
     const fieldName = CSF_KEY_MAP[normKey]
-    const valueTrimmed = valueText.trim()
-
-    if (fieldName && valueTrimmed) {
-      rawPairs[fieldName] = valueTrimmed
-      console.log(`[Textract/Parse]   ✓ Mapeado: "${normKey}" → "${fieldName}" = "${valueTrimmed}"`)
+    if (fieldName && valueText.trim()) {
+      rawPairs[fieldName] = valueText.trim()
     } else if (!fieldName) {
-      unmappedKeys.push({ raw: normKey, value: valueTrimmed })
-      console.log(`[Textract/Parse]   ⚠ No mapeado: "${normKey}" = "${valueTrimmed}"`)
-    } else {
-      console.log(`[Textract/Parse]   ⚠ Vacío: "${normKey}" (no tiene valor)`)
+      // Log unmapped keys for debugging
+      console.log(`[Textract/FORMS] Unmapped key: "${normKey}" → "${valueText.trim()}"`)
     }
   }
 
-  console.log(`[Textract/Parse] ✓ Procesados ${keyValueCount} pares KEY_VALUE_SET`)
-  console.log(`[Textract/Parse] ✓ ${Object.keys(rawPairs).length} campos mapeados, ${unmappedKeys.length} sin mapear`)
-
-  if (unmappedKeys.length > 0) {
-    console.log(`[Textract/Parse] Claves NO MAPEADAS:`)
-    unmappedKeys.forEach(item => {
-      console.log(`[Textract/Parse]   - "${item.raw}" = "${item.value}"`)
-    })
-  }
-
-  console.log(`[Textract/Parse] Pares mapeados:`, JSON.stringify(rawPairs, null, 2))
+  console.log('[Textract/FORMS] Mapped fields:', JSON.stringify(rawPairs, null, 2))
 
   // ── Build empresa-compatible object ──
   // Persona moral: uses "Denominación/Razón Social" directly
@@ -307,25 +156,21 @@ function parseFormsResponse(blocks) {
     const nombreParts = [rawPairs.nombre, rawPairs.primer_apellido, rawPairs.segundo_apellido]
       .filter(Boolean)
     razonSocial = nombreParts.length > 0 ? nombreParts.join(' ') : null
-    if (razonSocial) {
-      console.log(`[Textract/Parse] Razón social construida desde nombre/apellidos: "${razonSocial}"`)
-    }
   }
 
   // Build domicilio fiscal from address parts
+  // Formato: localidad + estado + colonia + tipo_vialidad + vialidad + numero_exterior
   const domicilioParts = [
+    rawPairs.localidad,
+    rawPairs.estado,
+    rawPairs.colonia,
     rawPairs.tipo_vialidad,
     rawPairs.vialidad,
-    rawPairs.numero_exterior ? `#${rawPairs.numero_exterior}` : null,
-    rawPairs.numero_interior ? `Int. ${rawPairs.numero_interior}` : null,
-    rawPairs.colonia ? `Col. ${rawPairs.colonia}` : null,
+    rawPairs.numero_exterior,
   ].filter(Boolean)
-  const domicilioFiscal = domicilioParts.length > 0 ? domicilioParts.join(' ') : null
-  if (domicilioFiscal) {
-    console.log(`[Textract/Parse] Domicilio fiscal construido: "${domicilioFiscal}"`)
-  }
+  const domicilioFiscal = domicilioParts.length > 0 ? domicilioParts.join(', ') : null
 
-  const result = {
+  return {
     razon_social:       razonSocial,
     nombre_comercial:   rawPairs.nombre_comercial || null,
     rfc:                rawPairs.rfc || null,
@@ -346,9 +191,92 @@ function parseFormsResponse(blocks) {
       entre_calle:              rawPairs.entre_calle || null,
     },
   }
+}
 
-  console.log(`[Textract/Parse] ✓ Objeto final construido:`, JSON.stringify(result, null, 2))
-  return result
+// ═══════════════════════════════════════════════════════════
+//  ASYNC mode — multi-page documents (StartDocumentAnalysis)
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Analyses a multi-page document using async Textract (FORMS mode).
+ * The document MUST already be in S3.
+ *
+ * @param {string} s3Bucket - S3 bucket name
+ * @param {string} s3Key - S3 object key
+ * @returns {Promise<Object>} Mapped fields (same format as analyzeDocumentForms)
+ */
+async function analyzeDocumentFormsAsync(s3Bucket, s3Key) {
+  console.log(`[Textract/ASYNC] Iniciando análisis de documento multi-página...`)
+  console.log(`[Textract/ASYNC] Bucket: ${s3Bucket}, Key: ${s3Key}`)
+
+  const client = createClient()
+
+  // ── 1. Iniciar análisis ──
+  const startCommand = new StartDocumentAnalysisCommand({
+    DocumentLocation: {
+      S3Object: {
+        Bucket: s3Bucket,
+        Name: s3Key,
+      },
+    },
+    FeatureTypes: ['FORMS'],
+  })
+
+  console.log('[Textract/ASYNC] 🚀 Enviando StartDocumentAnalysis...')
+  const startResponse = await client.send(startCommand)
+  const jobId = startResponse.JobId
+
+  console.log(`[Textract/ASYNC] ✓ Job iniciado con ID: ${jobId}`)
+
+  // ── 2. Polling hasta que complete ──
+  let status = 'IN_PROGRESS'
+  let allBlocks = []
+  const maxAttempts = 60 // 60 intentos × 2 segundos = 2 minutos máximo
+  let attempts = 0
+
+  while (status === 'IN_PROGRESS' && attempts < maxAttempts) {
+    attempts++
+    console.log(`[Textract/ASYNC] ⏳ Esperando... (intento ${attempts}/${maxAttempts})`)
+    
+    // Esperar 2 segundos entre intentos
+    await new Promise(resolve => setTimeout(resolve, 2000))
+
+    const getCommand = new GetDocumentAnalysisCommand({ JobId: jobId })
+    const getResponse = await client.send(getCommand)
+
+    status = getResponse.JobStatus
+    console.log(`[Textract/ASYNC] Estado: ${status}`)
+
+    if (status === 'SUCCEEDED') {
+      // Recopilar todos los bloques (puede ser paginado)
+      allBlocks.push(...(getResponse.Blocks || []))
+
+      // Si hay más páginas, obtenerlas
+      let nextToken = getResponse.NextToken
+      while (nextToken) {
+        console.log(`[Textract/ASYNC] 📑 Obteniendo siguiente página de resultados...`)
+        const nextCommand = new GetDocumentAnalysisCommand({ 
+          JobId: jobId, 
+          NextToken: nextToken 
+        })
+        const nextResponse = await client.send(nextCommand)
+        allBlocks.push(...(nextResponse.Blocks || []))
+        nextToken = nextResponse.NextToken
+      }
+
+      console.log(`[Textract/ASYNC] ✅ Análisis completado - ${allBlocks.length} bloques recibidos`)
+      break
+    } else if (status === 'FAILED') {
+      throw new Error(`Textract job failed: ${getResponse.StatusMessage}`)
+    }
+  }
+
+  if (status === 'IN_PROGRESS') {
+    throw new Error('Textract timeout - el documento tardó demasiado en procesarse')
+  }
+
+  // ── 3. Parsear los bloques usando la misma lógica que el método síncrono ──
+  return parseFormsResponse(allBlocks)
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -486,6 +414,7 @@ function parseTextractQueriesResponse(response) {
 
 module.exports = {
   analyzeDocumentForms,
+  analyzeDocumentFormsAsync,
   analyzeDocumentQueries,
   parseFormsResponse,
   parseTextractQueriesResponse,

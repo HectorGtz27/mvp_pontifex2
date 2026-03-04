@@ -4,7 +4,8 @@ const prisma = require('../prisma.cjs')
  * Inserts a new documento record after uploading to S3.
  *
  * @param {Object} params
- * @param {string} params.documentType - e.g. 'situacion_fiscal', 'acta', etc.
+ * @param {string|null} params.solicitudId - UUID of the parent Solicitud
+ * @param {string} params.documentType - e.g. 'constancia_situacion_fiscal', 'acta_constitutiva', etc.
  * @param {string} params.fileName - Original file name
  * @param {string} params.s3Url - Full S3 URL
  * @param {string} params.s3Key - S3 object key
@@ -14,21 +15,31 @@ const prisma = require('../prisma.cjs')
  * @param {string|null} params.textractError - Error message if Textract failed
  * @returns {Promise<Object>} The inserted documento record
  */
-async function createDocumento({ documentType, fileName, s3Url, s3Key, mimeType, fileSize, extractedData, textractError }) {
+async function createDocumento({ solicitudId, documentType, fileName, s3Url, s3Key, mimeType, fileSize, extractedData, textractError }) {
   console.log(`\n[DocumentoService] ▶ Guardando documento en BD...`)
 
   const documento = await prisma.documento.create({
     data: {
-      document_type:  documentType || 'unknown',
-      file_name:      fileName,
-      s3_url:         s3Url,
-      s3_key:         s3Key,
-      mime_type:      mimeType,
-      file_size:      fileSize,
-      extracted_data: extractedData ?? undefined,
-      textract_error: textractError ?? null,
+      solicitud_id:      solicitudId,
+      tipo_documento_id: documentType || 'presentacion_curriculum',
+      nombre_archivo:    fileName,
+      s3_url:            s3Url,
+      s3_key:            s3Key,
+      mime_type:         mimeType,
+      tamano_archivo:    fileSize,
+      extracted_data:    extractedData ?? undefined,
+      textract_error:    textractError ?? null,
     },
   })
+
+  // Update docs_subidos count on the solicitud
+  if (solicitudId) {
+    const count = await prisma.documento.count({ where: { solicitud_id: solicitudId } })
+    await prisma.solicitud.update({
+      where: { id: solicitudId },
+      data: { docs_subidos: count },
+    })
+  }
 
   console.log(`[DocumentoService] ✓ Documento guardado en BD (ID: ${documento.id})`)
   return documento

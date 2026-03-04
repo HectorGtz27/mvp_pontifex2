@@ -1,4 +1,5 @@
-import { MOCK_CREDITS } from '../data/mock'
+import { useState, useEffect } from 'react'
+import { fetchCredits } from '../utils/api'
 
 const STATUS_STYLES = {
   green: 'bg-emerald-100 text-emerald-800',
@@ -7,6 +8,18 @@ const STATUS_STYLES = {
 }
 
 export default function CovenantMonitoring() {
+  const [credits, setCredits] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetchCredits()
+      .then(setCredits)
+      .catch(() => setCredits([]))
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return <div className="p-8 text-slate-500">Cargando créditos…</div>
+
   return (
     <div className="space-y-8">
       <div>
@@ -17,7 +30,7 @@ export default function CovenantMonitoring() {
       </div>
 
       <div className="grid gap-4">
-        {MOCK_CREDITS.map((credit) => (
+        {credits.map((credit) => (
           <div
             key={credit.id}
             className="bg-white rounded-xl border border-slate-200 overflow-hidden"

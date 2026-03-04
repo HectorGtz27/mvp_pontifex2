@@ -11,49 +11,27 @@ async function apiFetch(path) {
   return res.json()
 }
 
+// ─── Document types (with categories) ──────────────────────
 export async function fetchDocumentTypes() {
   return apiFetch('/document-types')
 }
 
-export async function fetchApplication(id) {
-  return apiFetch(`/applications/${id}`)
-}
-
-export async function fetchApplications({ q, limit, offset } = {}) {
+// ─── Clientes (empresas) ──────────────────────────────────
+export async function fetchClientes({ q, limit, offset } = {}) {
   const params = new URLSearchParams()
   if (q) params.set('q', q)
   if (typeof limit === 'number') params.set('limit', String(limit))
   if (typeof offset === 'number') params.set('offset', String(offset))
   const suffix = params.toString() ? `?${params.toString()}` : ''
-  return apiFetch(`/applications${suffix}`)
+  return apiFetch(`/clientes${suffix}`)
 }
 
-export async function fetchExtractedFields(appId) {
-  return apiFetch(`/applications/${appId}/extracted-fields`)
+export async function fetchCliente(id) {
+  return apiFetch(`/clientes/${id}`)
 }
 
-export async function fetchSpreadsheet(appId) {
-  return apiFetch(`/applications/${appId}/spreadsheet`)
-}
-
-export async function fetchScore(appId) {
-  return apiFetch(`/applications/${appId}/score`)
-}
-
-export async function fetchKpis(appId) {
-  return apiFetch(`/applications/${appId}/kpis`)
-}
-
-export async function fetchRecommendation(appId) {
-  return apiFetch(`/applications/${appId}/recommendation`)
-}
-
-export async function fetchCredits() {
-  return apiFetch('/credits')
-}
-
-export async function createApplication(data) {
-  const res = await fetch(`${BASE}/applications`, {
+export async function createCliente(data) {
+  const res = await fetch(`${BASE}/clientes`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -62,28 +40,8 @@ export async function createApplication(data) {
   return res.json()
 }
 
-// ─── Empresas ──────────────────────────────────────────────
-
-export async function fetchEmpresas() {
-  return apiFetch('/empresas')
-}
-
-export async function fetchEmpresa(id) {
-  return apiFetch(`/empresas/${id}`)
-}
-
-export async function createEmpresa(data) {
-  const res = await fetch(`${BASE}/empresas`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(`API error ${res.status}`)
-  return res.json()
-}
-
-export async function updateEmpresa(id, data) {
-  const res = await fetch(`${BASE}/empresas/${id}`, {
+export async function updateCliente(id, data) {
+  const res = await fetch(`${BASE}/clientes/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -92,8 +50,71 @@ export async function updateEmpresa(id, data) {
   return res.json()
 }
 
-export async function deleteEmpresa(id) {
-  const res = await fetch(`${BASE}/empresas/${id}`, { method: 'DELETE' })
+// ─── Solicitudes (aplicaciones de crédito) ─────────────────
+export async function fetchSolicitudes({ q, limit, offset } = {}) {
+  const params = new URLSearchParams()
+  if (q) params.set('q', q)
+  if (typeof limit === 'number') params.set('limit', String(limit))
+  if (typeof offset === 'number') params.set('offset', String(offset))
+  const suffix = params.toString() ? `?${params.toString()}` : ''
+  return apiFetch(`/solicitudes${suffix}`)
+}
+
+export async function fetchSolicitud(id) {
+  return apiFetch(`/solicitudes/${id}`)
+}
+
+export async function createSolicitud(data) {
+  const res = await fetch(`${BASE}/solicitudes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
   if (!res.ok) throw new Error(`API error ${res.status}`)
   return res.json()
 }
+
+// ─── Documentos, campos extraídos, score, KPIs ────────────
+export async function fetchDocuments(solicitudId) {
+  return apiFetch(`/solicitudes/${solicitudId}/documents`)
+}
+
+export async function fetchExtractedFields(solicitudId) {
+  return apiFetch(`/solicitudes/${solicitudId}/extracted-fields`)
+}
+
+export async function fetchSpreadsheet(solicitudId) {
+  return apiFetch(`/solicitudes/${solicitudId}/spreadsheet`)
+}
+
+export async function fetchScore(solicitudId) {
+  return apiFetch(`/solicitudes/${solicitudId}/score`)
+}
+
+export async function fetchKpis(solicitudId) {
+  return apiFetch(`/solicitudes/${solicitudId}/kpis`)
+}
+
+export async function fetchRecommendation(solicitudId) {
+  return apiFetch(`/solicitudes/${solicitudId}/recommendation`)
+}
+
+export async function submitDecision(solicitudId, { type, reason }) {
+  const res = await fetch(`${BASE}/solicitudes/${solicitudId}/decision`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type, reason }),
+  })
+  if (!res.ok) throw new Error(`API error ${res.status}`)
+  return res.json()
+}
+
+// ─── Créditos (post-desembolso) ────────────────────────────
+export async function fetchCredits() {
+  return apiFetch('/credits')
+}
+
+// ─── Backward compat aliases ───────────────────────────────
+export const fetchApplications = fetchSolicitudes
+export const fetchApplication = fetchSolicitud
+export const createApplication = createSolicitud

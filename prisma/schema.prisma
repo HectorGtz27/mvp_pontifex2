@@ -1,5 +1,7 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// ═══════════════════════════════════════════════════════════════
+// Pontifex Database Schema — Prisma
+// Empresa de servicios de gestión de créditos bancarios
+// ═══════════════════════════════════════════════════════════════
 
 generator client {
   provider = "prisma-client-js"
@@ -10,36 +12,309 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Empresa {
-  id                    String   @id @default(uuid()) @db.Uuid
-  razon_social          String   @db.VarChar(200)
-  nombre_comercial      String?  @db.VarChar(200)
-  rfc                   String   @db.VarChar(13)
-  domicilio_fiscal      String?  @db.Text
-  ciudad                String?  @db.VarChar(100)
-  estado                String?  @db.VarChar(100)
-  telefono              String?  @db.VarChar(20)
-  correo_electronico    String?  @db.VarChar(200)
-  pagina_web            String?  @db.VarChar(200)
-  numero_empleados      Int?
-  empleados_permanentes Int?
-  empleados_eventuales  Int?
-  created_at            DateTime @default(now())
+// ─── 1. Cliente (Empresa que solicita el crédito) ─────────────
 
-  @@map("empresas")
+model Cliente {
+  id                        String   @id @default(uuid()) @db.Uuid
+  // ── Datos Generales ──
+  razon_social              String   @db.VarChar(300)
+  nombre_comercial          String?  @db.VarChar(300)
+  rfc                       String?  @db.VarChar(13)
+  domicilio_fiscal          String?  @db.Text
+  ciudad                    String?  @db.VarChar(100)
+  estado                    String?  @db.VarChar(100)
+  contacto_nombre           String?  @db.VarChar(200)
+  telefono                  String?  @db.VarChar(50)
+  celular                   String?  @db.VarChar(50)
+  correo_electronico        String?  @db.VarChar(200)
+  pagina_web                String?  @db.VarChar(300)
+  num_empleados_permanentes Int?
+  num_empleados_eventuales  Int?
+  // ── Timestamps ──
+  created_at                DateTime @default(now())
+  updated_at                DateTime @updatedAt
+
+  // ── Relations ──
+  solicitudes Solicitud[]
+
+  @@map("clientes")
 }
 
-model Documento {
-  id               String   @id @default(uuid()) @db.Uuid
-  document_type    String   @db.VarChar(50)
-  file_name        String   @db.VarChar(500)
-  s3_url           String   @db.Text
-  s3_key           String   @db.VarChar(500)
-  mime_type        String   @db.VarChar(50)
-  file_size        Int
-  extracted_data   Json?
-  textract_error   String?  @db.Text
-  created_at       DateTime @default(now())
+// ─── 2. Solicitud (Aplicación de crédito) ─────────────────────
 
+model Solicitud {
+  id                     String   @id @default(uuid()) @db.Uuid
+  cliente_id             String   @db.Uuid
+  // ── Datos de la solicitud (formulario manual) ──
+  monto                  Decimal  @db.Decimal(15, 2)
+  divisa                 String   @default("MXN") @db.VarChar(10)
+  plazo_deseado          String?  @db.VarChar(100)
+  destino                String?  @db.Text
+  tasa_objetivo          String?  @db.VarChar(100)
+  tipo_colateral         String?  @db.VarChar(200)
+  // ── Información cuantitativa (formulario manual) ──
+  nivel_ventas_anuales   Decimal? @db.Decimal(15, 2)
+  margen_real_utilidad   Decimal? @db.Decimal(5, 2)
+  situacion_buro_credito String?  @db.VarChar(200)
+  // ── Estatus y progreso ──
+  estatus                String   @default("borrador") @db.VarChar(30)
+  docs_total             Int      @default(0)
+  docs_subidos           Int      @default(0)
+  notas                  String?  @db.Text
+  // ── Timestamps ──
+  created_at             DateTime @default(now())
+  updated_at             DateTime @updatedAt
+
+  // ── Relations ──
+  cliente          Cliente          @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
+  documentos       Documento[]
+  campos_extraidos CampoExtraido[]
+  score_crediticio ScoreCrediticio?
+  indicadores      Indicador[]
+  recomendacion    Recomendacion?
+  decision         Decision?
+  creditos         Credito[]
+
+  @@index([cliente_id])
+  @@map("solicitudes")
+}
+
+// ─── 3. Categoría de documentos ───────────────────────────────
+
+model CategoriaDocumento {
+  id     String @id @db.VarChar(50)
+  nombre String @db.VarChar(200)
+  orden  Int    @default(0)
+
+  // ── Relations ──
+  tipos TipoDocumento[]
+
+  @@map("categorias_documento")
+}
+
+// ─── 4. Tipo de documento (checklist) ─────────────────────────
+
+model TipoDocumento {
+  id           String  @id @db.VarChar(50)
+  categoria_id String  @db.VarChar(50)
+  label        String  @db.VarChar(300)
+  required     Boolean @default(true)
+  orden        Int     @default(0)
+
+  // ── Relations ──
+  categoria  CategoriaDocumento @relation(fields: [categoria_id], references: [id])
+  documentos Documento[]
+
+  @@index([categoria_id])
+  @@map("tipos_documento")
+}
+
+// ─── 5. Documento (archivo subido con datos OCR) ──────────────
+
+model Documento {
+  id                String   @id @default(uuid()) @db.Uuid
+  solicitud_id      String   @db.Uuid
+  tipo_documento_id String   @db.VarChar(50)
+  nombre_archivo    String   @db.VarChar(500)
+  s3_url            String   @db.Text
+  s3_key            String   @db.VarChar(500)
+  mime_type         String   @db.VarChar(100)
+  tamano_archivo    Int
+  extracted_data    Json?
+  textract_error    String?  @db.Text
+  estado            String   @default("pendiente") @db.VarChar(30)
+  confianza         Decimal? @db.Decimal(5, 2)
+  created_at        DateTime @default(now())
+
+  // ── Relations ──
+  solicitud        Solicitud        @relation(fields: [solicitud_id], references: [id], onDelete: Cascade)
+  tipo_documento   TipoDocumento    @relation(fields: [tipo_documento_id], references: [id])
+  campos_extraidos CampoExtraido[]
+
+  @@index([solicitud_id])
+  @@index([tipo_documento_id])
   @@map("documentos")
+}
+
+// ─── 6. Campo extraído (datos OCR normalizados) ───────────────
+
+model CampoExtraido {
+  id           Int      @id @default(autoincrement())
+  solicitud_id String   @db.Uuid
+  documento_id String   @db.Uuid
+  seccion      String?  @db.VarChar(100)
+  campo        String   @db.VarChar(200)
+  valor        String?  @db.Text
+  periodo      String?  @db.VarChar(50)
+  fuente       String?  @db.VarChar(100)
+  confianza    Decimal  @default(0) @db.Decimal(5, 2)
+  estado       String   @default("pendiente") @db.VarChar(30)
+  created_at   DateTime @default(now())
+
+  // ── Relations ──
+  solicitud Solicitud @relation(fields: [solicitud_id], references: [id], onDelete: Cascade)
+  documento Documento @relation(fields: [documento_id], references: [id], onDelete: Cascade)
+
+  @@index([solicitud_id])
+  @@index([documento_id])
+  @@map("campos_extraidos")
+}
+
+// ─── 7. Score crediticio ──────────────────────────────────────
+
+model ScoreCrediticio {
+  id           Int      @id @default(autoincrement())
+  solicitud_id String   @unique @db.Uuid
+  grado        String   @db.Char(1)
+  grado_label  String?  @db.VarChar(50)
+  compuesto    Int?
+  score_buro   Int?
+  banda_buro   String?  @db.VarChar(100)
+  created_at   DateTime @default(now())
+
+  // ── Relations ──
+  solicitud Solicitud       @relation(fields: [solicitud_id], references: [id], onDelete: Cascade)
+  desglose  DesgloseScore[]
+
+  @@map("score_crediticio")
+}
+
+// ─── 8. Desglose del score ────────────────────────────────────
+
+model DesgloseScore {
+  id                  Int    @id @default(autoincrement())
+  score_crediticio_id Int
+  nombre              String @db.VarChar(50)
+  peso                Int?
+  puntaje             Int?
+  maximo              Int    @default(100)
+  estado              String @default("ok") @db.VarChar(20)
+
+  // ── Relations ──
+  score_crediticio ScoreCrediticio @relation(fields: [score_crediticio_id], references: [id], onDelete: Cascade)
+
+  @@index([score_crediticio_id])
+  @@map("desglose_score")
+}
+
+// ─── 9. Indicadores financieros (KPIs) ───────────────────────
+
+model Indicador {
+  id           Int      @id @default(autoincrement())
+  solicitud_id String   @db.Uuid
+  nombre       String   @db.VarChar(50)
+  valor        Decimal? @db.Decimal(15, 4)
+  formato      String?  @db.VarChar(20)
+  benchmark    String?  @db.VarChar(30)
+  estado       String   @default("ok") @db.VarChar(20)
+
+  // ── Relations ──
+  solicitud Solicitud @relation(fields: [solicitud_id], references: [id], onDelete: Cascade)
+
+  @@index([solicitud_id])
+  @@map("indicadores")
+}
+
+// ─── 10. Recomendación del sistema ───────────────────────────
+
+model Recomendacion {
+  id                   Int      @id @default(autoincrement())
+  solicitud_id         String   @unique @db.Uuid
+  accion               String   @db.VarChar(30)
+  monto_sugerido       Decimal? @db.Decimal(15, 2)
+  plazo_sugerido_meses Int?
+  tasa_sugerida        String?  @db.VarChar(50)
+  notas_analista       String?  @db.Text
+  created_at           DateTime @default(now())
+
+  // ── Relations ──
+  solicitud   Solicitud                @relation(fields: [solicitud_id], references: [id], onDelete: Cascade)
+  condiciones CondicionRecomendacion[]
+
+  @@map("recomendaciones")
+}
+
+// ─── 11. Condiciones de recomendación ────────────────────────
+
+model CondicionRecomendacion {
+  id               Int    @id @default(autoincrement())
+  recomendacion_id Int
+  texto_condicion  String @db.Text
+
+  // ── Relations ──
+  recomendacion Recomendacion @relation(fields: [recomendacion_id], references: [id], onDelete: Cascade)
+
+  @@index([recomendacion_id])
+  @@map("condiciones_recomendacion")
+}
+
+// ─── 12. Decisión del analista ───────────────────────────────
+
+model Decision {
+  id           Int      @id @default(autoincrement())
+  solicitud_id String   @unique @db.Uuid
+  tipo         String   @db.VarChar(30)
+  motivo       String?  @db.Text
+  decided_at   DateTime @default(now())
+
+  // ── Relations ──
+  solicitud Solicitud @relation(fields: [solicitud_id], references: [id], onDelete: Cascade)
+
+  @@map("decisiones")
+}
+
+// ─── 13. Crédito (post-desembolso) ───────────────────────────
+
+model Credito {
+  id                  String    @id @default(uuid()) @db.Uuid
+  solicitud_id        String?   @db.Uuid
+  solicitante         String    @db.VarChar(200)
+  monto               Decimal   @db.Decimal(15, 2)
+  fecha_desembolso    DateTime? @db.Date
+  plazo_meses         Int?
+  saldo               Decimal?  @db.Decimal(15, 2)
+  grado_al_desembolso String?   @db.Char(1)
+  created_at          DateTime  @default(now())
+
+  // ── Relations ──
+  solicitud Solicitud?      @relation(fields: [solicitud_id], references: [id], onDelete: SetNull)
+  covenants Covenant[]
+  alertas   AlertaCredito[]
+
+  @@index([solicitud_id])
+  @@map("creditos")
+}
+
+// ─── 14. Covenants ───────────────────────────────────────────
+
+model Covenant {
+  id            Int      @id @default(autoincrement())
+  credito_id    String   @db.Uuid
+  nombre        String   @db.VarChar(50)
+  valor_actual  Decimal? @db.Decimal(15, 4)
+  umbral        Decimal? @db.Decimal(15, 4)
+  estado        String   @default("green") @db.VarChar(10)
+  regla_trigger String?  @db.Text
+
+  // ── Relations ──
+  credito Credito @relation(fields: [credito_id], references: [id], onDelete: Cascade)
+
+  @@index([credito_id])
+  @@map("covenants")
+}
+
+// ─── 15. Alertas de crédito ──────────────────────────────────
+
+model AlertaCredito {
+  id           Int      @id @default(autoincrement())
+  credito_id   String   @db.Uuid
+  tipo_alerta  String   @db.VarChar(10)
+  texto_alerta String   @db.Text
+  created_at   DateTime @default(now())
+
+  // ── Relations ──
+  credito Credito @relation(fields: [credito_id], references: [id], onDelete: Cascade)
+
+  @@index([credito_id])
+  @@map("alertas_credito")
 }
