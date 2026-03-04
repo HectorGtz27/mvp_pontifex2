@@ -721,9 +721,41 @@ export default function FullFlow() {
                     type="button"
                     onClick={async () => {
                       const baseName = formData.razonSocial?.replace(/\s+/g, '_') || 'solicitud'
+                      
+                      // Load documents with extractedData to populate Excel
+                      let extractedFields = []
+                      if (solicitudId) {
+                        try {
+                          const res = await fetch(`/api/solicitudes/${solicitudId}/documents`)
+                          if (res.ok) {
+                            const docs = await res.json()
+                            // Convert extractedData to array format for getVal()
+                            docs.forEach(doc => {
+                              if (doc.extractedData) {
+                                Object.entries(doc.extractedData).forEach(([key, value]) => {
+                                  if (key !== '_extra' && value) {
+                                    extractedFields.push({
+                                      documento: doc.tipoDocumentoLabel,
+                                      campo: key,
+                                      valor: value,
+                                      fuente: 'Textract'
+                                    })
+                                  }
+                                })
+                              }
+                            })
+                          }
+                        } catch (err) {
+                          console.error('Error loading documents:', err)
+                        }
+                      }
+                      
+                      // Use extracted fields if available, otherwise use spreadsheetData
+                      const dataToUse = extractedFields.length > 0 ? extractedFields : spreadsheetData
+                      
                       await downloadMasterClientXlsx(
                         formData,
-                        spreadsheetData,
+                        dataToUse,
                         `master_client_pontifex_${baseName}.xlsx`
                       )
                     }}

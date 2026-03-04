@@ -2,10 +2,18 @@ import ExcelJS from 'exceljs'
 
 /**
  * Get first extracted value by field name (campo) from OCR spreadsheet.
+ * Tries multiple variations of the field name.
  */
-function getVal(extracted, campo) {
-  const row = extracted.find((r) => r.campo.toLowerCase().includes(campo.toLowerCase()))
-  return row ? row.valor : ''
+function getVal(extracted, ...campos) {
+  for (const campo of campos) {
+    const row = extracted.find((r) => {
+      const campoLower = r.campo?.toLowerCase() || ''
+      const valorLower = campo.toLowerCase()
+      return campoLower.includes(valorLower) || campoLower.replace(/[_\s-]/g, '') === valorLower.replace(/[_\s-]/g, '')
+    })
+    if (row && row.valor) return row.valor
+  }
+  return ''
 }
 
 /**
@@ -25,10 +33,11 @@ export async function buildMasterClientWorkbook(formData, extracted) {
   // 2. Extract values from form and OCR
   const razonSocial = formData.razonSocial || ''
   const nombreComercial = formData.nombreComercial || ''
-  const rfc = getVal(extracted, 'RFC')
-  const domicilioFiscal = getVal(extracted, 'Domicilio Fiscal') || getVal(extracted, 'Domicilio') || ''
-  const ciudad = getVal(extracted, 'Ciudad') || ''
-  const estado = getVal(extracted, 'Estado') || ''
+  const rfc = getVal(extracted, 'RFC', 'rfc', 'R.F.C.', 'R F C')
+  const domicilioFiscal = getVal(extracted, 'Domicilio Fiscal', 'domicilio_fiscal', 'domicilio fiscal', 'Domicilio', 'domicilio')
+  const ciudad = getVal(extracted, 'Ciudad', 'ciudad')
+  const estado = getVal(extracted, 'Estado', 'estado')
+  const contactoNombre = formData.contacto_nombre || formData.contactoNombre || ''
   const telefono = formData.telefono || ''
   const correoElectronico = formData.correoElectronico || ''
   const paginaWeb = formData.paginaWeb || ''
@@ -44,15 +53,29 @@ export async function buildMasterClientWorkbook(formData, extracted) {
   }
 
   // 4. Fill in the cells (preserves all original styles)
+  // Fila 6: Razón Social en F6
   worksheet.getCell('F6').value = razonSocial
+  
+  // Fila 7: Nombre Comercial en F7
   worksheet.getCell('F7').value = nombreComercial
+  
+  // Fila 8: RFC en F8, Domicilio Fiscal en K8
   worksheet.getCell('F8').value = rfc
   worksheet.getCell('K8').value = domicilioFiscal
+  
+  // Fila 9: Ciudad en F9, Estado en M9
   worksheet.getCell('F9').value = ciudad
-  worksheet.getCell('L9').value = estado
-  worksheet.getCell('M10').value = telefono
+  worksheet.getCell('M9').value = estado
+  
+  // Fila 10: Contacto en F10, Teléfono en N10
+  worksheet.getCell('F10').value = contactoNombre
+  worksheet.getCell('N10').value = telefono
+  
+  // Fila 11: Correo electrónico en F11, Página web en O11
   worksheet.getCell('F11').value = correoElectronico
-  worksheet.getCell('N11').value = paginaWeb
+  worksheet.getCell('O11').value = paginaWeb
+  
+  // Fila 12: Total empleados en F12, Permanentes en H12, Eventuales en K12
   worksheet.getCell('F12').value = numEmpleadosTotal
   worksheet.getCell('H12').value = numEmpleadosPermanentes
   worksheet.getCell('K12').value = numEmpleadosEventuales
