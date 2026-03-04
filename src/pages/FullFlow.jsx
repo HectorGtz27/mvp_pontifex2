@@ -92,7 +92,7 @@ export default function FullFlow() {
   const formComplete = formData.applicant.trim() && formData.requestedAmount && formData.termMonths && formData.purpose.trim()
   const canGoToStep1 = formComplete
   const canGoToStep2 = documentsComplete
-  const canGoToStep3 = decision === 'approved' || decision === 'adjusted'
+  const canGoToStep3 = canGoToStep2
 
   const updateForm = (field, value) => setFormData((prev) => ({ ...prev, [field]: value }))
 
@@ -755,54 +755,15 @@ export default function FullFlow() {
                 ))}
               </div>
             )}
-
-            {/* Decisión - full width */}
-            <div className="lg:col-span-3 bg-white rounded-xl border border-slate-200 p-5">
-              <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Decisión del analista</h2>
-              <textarea
-                placeholder="Motivo (obligatorio para auditoría)"
-                value={analystNotes}
-                onChange={(e) => setAnalystNotes(e.target.value)}
-                className="w-full h-20 px-3 py-2 border border-slate-200 rounded-lg text-sm resize-none focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500 mb-4"
-              />
-              <div className="flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={() => setDecision('approved')}
-                  className="px-5 py-2.5 rounded-lg font-medium bg-emerald-600 text-white hover:bg-emerald-700"
-                >
-                  Aprobar (según recomendación)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDecision('adjusted')}
-                  className="px-5 py-2.5 rounded-lg font-medium border border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100"
-                >
-                  Aprobar con ajustes
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDecision('rejected')}
-                  className="px-5 py-2.5 rounded-lg font-medium border border-red-200 text-red-700 bg-red-50 hover:bg-red-100"
-                >
-                  Rechazar
-                </button>
-                {decision && (
-                  <span className="inline-flex items-center text-sm text-slate-600 pl-2">
-                    Decisión: <strong>{decision === 'approved' ? 'Aprobado' : decision === 'adjusted' ? 'Aprobado con ajustes' : 'Rechazado'}</strong>
-                  </span>
-                )}
-                {(decision === 'approved' || decision === 'adjusted') && (
-                  <button
-                    type="button"
-                    onClick={() => setCurrentStep(3)}
-                    className="ml-auto px-4 py-2 bg-pontifex-600 text-white rounded-lg font-medium text-sm hover:bg-pontifex-700"
-                  >
-                    Ver proveedores compatibles →
-                  </button>
-                )}
-              </div>
-            </div>
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => setCurrentStep(3)}
+              className="px-5 py-2.5 bg-pontifex-600 text-white rounded-lg font-medium hover:bg-pontifex-700"
+            >
+              Ver proveedores compatibles →
+            </button>
           </div>
           </div>
 
@@ -988,13 +949,51 @@ export default function FullFlow() {
             ))}
           </div>
 
+          <div className="bg-white rounded-xl border border-slate-200 p-5">
+            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Decisión del analista</h2>
+            <textarea
+              placeholder="Motivo (obligatorio para auditoría)"
+              value={analystNotes}
+              onChange={(e) => setAnalystNotes(e.target.value)}
+              className="w-full h-20 px-3 py-2 border border-slate-200 rounded-lg text-sm resize-none focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500 mb-4"
+            />
+            <div className="flex flex-wrap gap-3 items-center">
+              <button
+                type="button"
+                onClick={() => setDecision('approved')}
+                className="px-5 py-2.5 rounded-lg font-medium bg-emerald-600 text-white hover:bg-emerald-700"
+              >
+                Aprobar (según recomendación)
+              </button>
+              <button
+                type="button"
+                onClick={() => setDecision('adjusted')}
+                className="px-5 py-2.5 rounded-lg font-medium border border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100"
+              >
+                Aprobar con ajustes
+              </button>
+              <button
+                type="button"
+                onClick={() => setDecision('rejected')}
+                className="px-5 py-2.5 rounded-lg font-medium border border-red-200 text-red-700 bg-red-50 hover:bg-red-100"
+              >
+                Rechazar
+              </button>
+              {decision && (
+                <span className="text-sm text-slate-600">
+                  Decisión: <strong>{decision === 'approved' ? 'Aprobado' : decision === 'adjusted' ? 'Aprobado con ajustes' : 'Rechazado'}</strong>
+                </span>
+              )}
+            </div>
+          </div>
+
           <div className="flex items-center justify-between pt-2">
             <button
               type="button"
               onClick={() => setCurrentStep(2)}
               className="px-4 py-2 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-100 text-sm"
             >
-              ← Decisión
+              ← Evaluación
             </button>
             <p className="text-sm text-slate-500">
               {COMPATIBLE_PROVIDERS.length} proveedores compatibles con esta solicitud.
