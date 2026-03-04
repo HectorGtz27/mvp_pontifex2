@@ -31,6 +31,7 @@ export async function buildMasterClientWorkbook(formData, extracted) {
   await workbook.xlsx.load(arrayBuffer)
 
   // 2. Extract values from form and OCR
+  // ── Datos Generales (Cliente) ──
   const razonSocial = formData.razonSocial || ''
   const nombreComercial = formData.nombreComercial || ''
   const rfc = getVal(extracted, 'RFC', 'rfc', 'R.F.C.', 'R F C')
@@ -45,6 +46,19 @@ export async function buildMasterClientWorkbook(formData, extracted) {
   const numEmpleadosEventuales = formData.numEmpleadosEventuales || ''
   const numEmpleadosTotal = (Number(numEmpleadosPermanentes) || 0) + (Number(numEmpleadosEventuales) || 0)
 
+  // ── Datos de la Solicitud ──
+  const monto = formData.monto || ''
+  const divisa = formData.divisa || 'MXN'
+  const plazoDeseado = formData.plazoDeseado || ''
+  const destino = formData.destino || ''
+  const tasaObjetivo = formData.tasaObjetivo || ''
+  const tipoColateral = formData.tipoColateral || ''
+
+  // ── Información Cuantitativa ──
+  const nivelVentasAnuales = formData.nivelVentasAnuales || ''
+  const margenRealUtilidad = formData.margenRealUtilidad || ''
+  const situacionBuroCredito = formData.situacionBuroCredito || ''
+
   // 3. Get the "Infromacion General " sheet
   const worksheet = workbook.getWorksheet('Infromacion General ')
   if (!worksheet) {
@@ -53,6 +67,7 @@ export async function buildMasterClientWorkbook(formData, extracted) {
   }
 
   // 4. Fill in the cells (preserves all original styles)
+  // ── DATOS GENERALES ──
   // Fila 6: Razón Social en F6
   worksheet.getCell('F6').value = razonSocial
   
@@ -79,6 +94,22 @@ export async function buildMasterClientWorkbook(formData, extracted) {
   worksheet.getCell('F12').value = numEmpleadosTotal
   worksheet.getCell('H12').value = numEmpleadosPermanentes
   worksheet.getCell('K12').value = numEmpleadosEventuales
+
+  // ── SOLICITUD ──
+  // Ajusta estas referencias de celda según tu plantilla Excel.
+  // Ejemplo: si "Monto:" está en la fila 14, el valor iría en la celda después del label
+  worksheet.getCell('F29').value = monto
+  worksheet.getCell('F30').value = divisa
+  worksheet.getCell('F31').value = plazoDeseado
+  worksheet.getCell('F32').value = destino
+  worksheet.getCell('F33').value = tasaObjetivo
+  worksheet.getCell('F34').value = tipoColateral
+
+  // ── INFORMACION CUANTITATIVA ──
+  // Ajusta estas referencias de celda según tu plantilla Excel
+  worksheet.getCell('F37').value = nivelVentasAnuales
+  worksheet.getCell('K37').value = margenRealUtilidad
+  worksheet.getCell('P23').value = situacionBuroCredito
 
   // 5. Add or update "Datos extraídos (OCR)" sheet
   const ocrSheetName = 'Datos extraídos (OCR)'

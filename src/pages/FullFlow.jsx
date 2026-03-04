@@ -511,7 +511,7 @@ export default function FullFlow() {
           </div>
 
           <form
-            onSubmit={(e) => { e.preventDefault(); if (formComplete) handleCreateApplication() }}
+            onSubmit={(e) => { e.preventDefault(); if (formComplete && !savingApp) handleCreateApplication() }}
             className="space-y-6"
           >
             {/* ── Sección 1: Datos del Cliente (Empresa) ── */}

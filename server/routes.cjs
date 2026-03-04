@@ -555,4 +555,136 @@ router.get('/applications', async (req, res) => {
   }
 })
 
+// ═══════════════════════════════════════════════════════════════
+// Bancos con convenio
+// ═══════════════════════════════════════════════════════════════
+
+// GET /api/bancos — lista todos los bancos
+router.get('/bancos', async (_req, res) => {
+  try {
+    const bancos = await prisma.banco.findMany({
+      where: { activo: true },
+      orderBy: { nombre: 'asc' },
+    })
+    res.json(bancos)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// GET /api/bancos/:id — detalle de un banco
+router.get('/bancos/:id', async (req, res) => {
+  try {
+    const banco = await prisma.banco.findUnique({ where: { id: req.params.id } })
+    if (!banco) return res.status(404).json({ error: 'Banco no encontrado' })
+    res.json(banco)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// GET /api/bancos/match?...filtros — bancos que cumplan criterios del cliente
+// Query params (todos opcionales, filtro AND):
+//   cobertura         = local | estatal | regional | nacional
+//   producto          = credito_simple | credito_revolvente | factoraje | arrendamiento
+//   experiencia       = menor_1_anio | 1_anio | 2_mas_anios
+//   sector            = comercio | industria | servicio | primario
+//   buro              = excelente | bueno | regular | malo
+//   garantia          = aval | relacion_patrimonial | hipotecaria | prendaria | liquidez | contrato
+//   solvencia         = utilidad | perdida | quiebra_tecnica
+router.get('/bancos/match/filtros', async (req, res) => {
+  try {
+    const {
+      cobertura, producto, experiencia, sector, buro, garantia, solvencia,
+    } = req.query
+
+    const where = { activo: true }
+
+    if (cobertura) {
+      const map = {
+        local: 'cob_local', estatal: 'cob_estatal',
+        regional: 'cob_regional', nacional: 'cob_nacional',
+      }
+      const col = map[cobertura]
+      if (col) where[col] = true
+    }
+    if (producto) {
+      const map = {
+        credito_simple: 'prod_credito_simple', credito_revolvente: 'prod_credito_revolvente',
+        factoraje: 'prod_factoraje', arrendamiento: 'prod_arrendamiento',
+      }
+      const col = map[producto]
+      if (col) where[col] = true
+    }
+    if (experiencia) {
+      const map = {
+        menor_1_anio: 'exp_menor_1_anio', '1_anio': 'exp_1_anio', '2_mas_anios': 'exp_2_mas_anios',
+      }
+      const col = map[experiencia]
+      if (col) where[col] = true
+    }
+    if (sector) {
+      const map = {
+        comercio: 'sec_comercio', industria: 'sec_industria',
+        servicio: 'sec_servicio', primario: 'sec_primario',
+      }
+      const col = map[sector]
+      if (col) where[col] = true
+    }
+    if (buro) {
+      const map = {
+        excelente: 'buro_excelente', bueno: 'buro_bueno',
+        regular: 'buro_regular', malo: 'buro_malo',
+      }
+      const col = map[buro]
+      if (col) where[col] = true
+    }
+    if (garantia) {
+      const map = {
+        aval: 'gar_aval', relacion_patrimonial: 'gar_relacion_patrimonial',
+        hipotecaria: 'gar_hipotecaria', prendaria: 'gar_prendaria',
+        liquidez: 'gar_liquidez', contrato: 'gar_contrato',
+      }
+      const col = map[garantia]
+      if (col) where[col] = true
+    }
+    if (solvencia) {
+      const map = {
+        utilidad: 'solv_utilidad', perdida: 'solv_perdida',
+        quiebra_tecnica: 'solv_quiebra_tecnica',
+      }
+      const col = map[solvencia]
+      if (col) where[col] = true
+    }
+
+    const bancos = await prisma.banco.findMany({ where, orderBy: { nombre: 'asc' } })
+    res.json({ total: bancos.length, bancos })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /api/bancos — crear banco (admin)
+router.post('/bancos', async (req, res) => {
+  try {
+    const banco = await prisma.banco.create({ data: req.body })
+    res.status(201).json(banco)
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+// PATCH /api/bancos/:id — actualizar banco (admin)
+router.patch('/bancos/:id', async (req, res) => {
+  try {
+    const banco = await prisma.banco.update({
+      where: { id: req.params.id },
+      data: { ...req.body, updated_at: new Date() },
+    })
+    res.json(banco)
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
 module.exports = router

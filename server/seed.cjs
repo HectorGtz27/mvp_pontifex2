@@ -286,6 +286,291 @@ async function seed() {
     }
     console.log('✓ Credits + covenants + alerts seeded')
 
+    // ─── 4. Bancos con convenio ──────────────────────────────
+    const bancos = [
+      // ──────────────────────────────────────────────────────
+      // 1. COVALTO
+      // Cobertura: Nacional | Productos: Crédito Simple, Revolvente, Factoraje, Arrendamiento
+      // Exp: 2+ años | Sector: todos | Buró: Bueno | Garantías: Aval, Hipotecaria, Prendaria
+      // Solvencia: Utilidad
+      // ──────────────────────────────────────────────────────
+      {
+        id: 'covalto',
+        nombre: 'COVALTO',
+        cob_local: false, cob_estatal: false, cob_regional: false, cob_nacional: true,
+        prod_credito_simple: true, prod_credito_revolvente: true, prod_factoraje: true, prod_arrendamiento: true,
+        exp_menor_1_anio: false, exp_1_anio: false, exp_2_mas_anios: true,
+        sec_comercio: true, sec_industria: true, sec_servicio: true, sec_primario: true,
+        buro_excelente: false, buro_bueno: true, buro_regular: false, buro_malo: false,
+        gar_aval: true, gar_relacion_patrimonial: false, gar_hipotecaria: true, gar_prendaria: true, gar_liquidez: false, gar_contrato: false,
+        solv_utilidad: true, solv_perdida: false, solv_quiebra_tecnica: false,
+      },
+      // ──────────────────────────────────────────────────────
+      // 2. SANTANDER PyME / EMPRESAS
+      // Cobertura: Estatal | Productos: Crédito Simple, Revolvente, Factoraje, Arrendamiento
+      // Exp: 2+ años | Sector: todos | Buró: Excelente | Garantías: Aval, Hipotecaria, Prendaria, Liquidez
+      // Solvencia: Utilidad
+      // ──────────────────────────────────────────────────────
+      {
+        id: 'santander_pyme',
+        nombre: 'SANTANDER PyME / EMPRESAS',
+        cob_local: false, cob_estatal: true, cob_regional: false, cob_nacional: false,
+        prod_credito_simple: true, prod_credito_revolvente: true, prod_factoraje: true, prod_arrendamiento: true,
+        exp_menor_1_anio: false, exp_1_anio: false, exp_2_mas_anios: true,
+        sec_comercio: true, sec_industria: true, sec_servicio: true, sec_primario: true,
+        buro_excelente: true, buro_bueno: false, buro_regular: false, buro_malo: false,
+        gar_aval: true, gar_relacion_patrimonial: false, gar_hipotecaria: true, gar_prendaria: true, gar_liquidez: true, gar_contrato: false,
+        solv_utilidad: true, solv_perdida: false, solv_quiebra_tecnica: false,
+      },
+      // ──────────────────────────────────────────────────────
+      // 3. FINAMO
+      // Cobertura: Nacional | Productos: Crédito Simple, Revolvente, Arrendamiento
+      // Exp: 2+ años | Sector: todos | Buró: Excelente | Garantías: Aval, Hipotecaria
+      // Solvencia: Utilidad, Pérdida
+      // ──────────────────────────────────────────────────────
+      {
+        id: 'finamo',
+        nombre: 'FINAMO',
+        cob_local: false, cob_estatal: false, cob_regional: false, cob_nacional: true,
+        prod_credito_simple: true, prod_credito_revolvente: true, prod_factoraje: false, prod_arrendamiento: true,
+        exp_menor_1_anio: false, exp_1_anio: false, exp_2_mas_anios: true,
+        sec_comercio: true, sec_industria: true, sec_servicio: true, sec_primario: true,
+        buro_excelente: true, buro_bueno: false, buro_regular: false, buro_malo: false,
+        gar_aval: true, gar_relacion_patrimonial: false, gar_hipotecaria: true, gar_prendaria: false, gar_liquidez: false, gar_contrato: false,
+        solv_utilidad: true, solv_perdida: true, solv_quiebra_tecnica: false,
+      },
+      // ──────────────────────────────────────────────────────
+      // 4. ANTICIPA / FINSUS
+      // Cobertura: Nacional | Productos: Crédito Simple, Revolvente
+      // Exp: 2+ años | Sector: todos | Buró: Regular | Garantías: Aval
+      // Solvencia: Utilidad, Pérdida
+      // ──────────────────────────────────────────────────────
+      {
+        id: 'anticipa_finsus',
+        nombre: 'ANTICIPA / FINSUS',
+        cob_local: false, cob_estatal: false, cob_regional: false, cob_nacional: true,
+        prod_credito_simple: true, prod_credito_revolvente: true, prod_factoraje: false, prod_arrendamiento: false,
+        exp_menor_1_anio: false, exp_1_anio: false, exp_2_mas_anios: true,
+        sec_comercio: true, sec_industria: true, sec_servicio: true, sec_primario: true,
+        buro_excelente: false, buro_bueno: false, buro_regular: true, buro_malo: false,
+        gar_aval: true, gar_relacion_patrimonial: false, gar_hipotecaria: false, gar_prendaria: false, gar_liquidez: false, gar_contrato: false,
+        solv_utilidad: true, solv_perdida: true, solv_quiebra_tecnica: false,
+      },
+      // ──────────────────────────────────────────────────────
+      // 5. GRUPO 1120
+      // Cobertura: Estatal | Productos: Crédito Simple, Revolvente
+      // Exp: 1 año | Sector: Comercio, Industria, Servicio | Buró: Bueno
+      // Garantías: Aval, Relación Patrimonial, Hipotecaria, Prendaria | Solvencia: Utilidad
+      // ──────────────────────────────────────────────────────
+      {
+        id: 'grupo_1120',
+        nombre: 'Grupo 1120',
+        cob_local: false, cob_estatal: true, cob_regional: false, cob_nacional: false,
+        prod_credito_simple: true, prod_credito_revolvente: true, prod_factoraje: false, prod_arrendamiento: false,
+        exp_menor_1_anio: false, exp_1_anio: true, exp_2_mas_anios: false,
+        sec_comercio: true, sec_industria: true, sec_servicio: true, sec_primario: false,
+        buro_excelente: false, buro_bueno: true, buro_regular: false, buro_malo: false,
+        gar_aval: true, gar_relacion_patrimonial: true, gar_hipotecaria: true, gar_prendaria: true, gar_liquidez: false, gar_contrato: false,
+        solv_utilidad: true, solv_perdida: false, solv_quiebra_tecnica: false,
+      },
+      // ──────────────────────────────────────────────────────
+      // 6. BANREGIO
+      // Cobertura: Estatal | Productos: Crédito Simple, Revolvente, Factoraje, Arrendamiento
+      // Exp: 2+ años | Sector: todos | Buró: Excelente | Garantías: Aval, Hipotecaria, Prendaria
+      // Solvencia: Utilidad
+      // ──────────────────────────────────────────────────────
+      {
+        id: 'banregio',
+        nombre: 'BANREGIO',
+        cob_local: false, cob_estatal: true, cob_regional: false, cob_nacional: false,
+        prod_credito_simple: true, prod_credito_revolvente: true, prod_factoraje: true, prod_arrendamiento: true,
+        exp_menor_1_anio: false, exp_1_anio: false, exp_2_mas_anios: true,
+        sec_comercio: true, sec_industria: true, sec_servicio: true, sec_primario: true,
+        buro_excelente: true, buro_bueno: false, buro_regular: false, buro_malo: false,
+        gar_aval: true, gar_relacion_patrimonial: false, gar_hipotecaria: true, gar_prendaria: true, gar_liquidez: false, gar_contrato: false,
+        solv_utilidad: true, solv_perdida: false, solv_quiebra_tecnica: false,
+      },
+      // ──────────────────────────────────────────────────────
+      // 7. AUTOKAPITAL
+      // Cobertura: Estatal | Productos: Crédito Simple, Revolvente
+      // Exp: 2+ años | Sector: todos | Buró: Bueno | Garantías: Aval, Prendaria
+      // Solvencia: Utilidad
+      // ──────────────────────────────────────────────────────
+      {
+        id: 'autokapital',
+        nombre: 'AUTOKAPITAL',
+        cob_local: false, cob_estatal: true, cob_regional: false, cob_nacional: false,
+        prod_credito_simple: true, prod_credito_revolvente: true, prod_factoraje: false, prod_arrendamiento: false,
+        exp_menor_1_anio: false, exp_1_anio: false, exp_2_mas_anios: true,
+        sec_comercio: true, sec_industria: true, sec_servicio: true, sec_primario: true,
+        buro_excelente: false, buro_bueno: true, buro_regular: false, buro_malo: false,
+        gar_aval: true, gar_relacion_patrimonial: false, gar_hipotecaria: false, gar_prendaria: true, gar_liquidez: false, gar_contrato: false,
+        solv_utilidad: true, solv_perdida: false, solv_quiebra_tecnica: false,
+      },
+      // ──────────────────────────────────────────────────────
+      // 8. HEY BANCO
+      // Cobertura: Nacional | Productos: Crédito Simple, Revolvente
+      // Exp: 1 año | Sector: todos | Buró: Excelente | Garantías: Aval
+      // Solvencia: Utilidad
+      // ──────────────────────────────────────────────────────
+      {
+        id: 'hey_banco',
+        nombre: 'HEY BANCO',
+        cob_local: false, cob_estatal: false, cob_regional: false, cob_nacional: true,
+        prod_credito_simple: true, prod_credito_revolvente: true, prod_factoraje: false, prod_arrendamiento: false,
+        exp_menor_1_anio: false, exp_1_anio: true, exp_2_mas_anios: false,
+        sec_comercio: true, sec_industria: true, sec_servicio: true, sec_primario: true,
+        buro_excelente: true, buro_bueno: false, buro_regular: false, buro_malo: false,
+        gar_aval: true, gar_relacion_patrimonial: false, gar_hipotecaria: false, gar_prendaria: false, gar_liquidez: false, gar_contrato: false,
+        solv_utilidad: true, solv_perdida: false, solv_quiebra_tecnica: false,
+      },
+      // ──────────────────────────────────────────────────────
+      // 9. TIP (Tecnología e Innovación de Pagos / Arrendamiento)
+      // Cobertura: Nacional | Productos: Arrendamiento
+      // Exp: 1 año | Sector: todos | Buró: Bueno
+      // Garantías: Aval, Relación Patrimonial, Contrato | Solvencia: Utilidad
+      // ──────────────────────────────────────────────────────
+      {
+        id: 'tip',
+        nombre: 'TIP',
+        cob_local: false, cob_estatal: false, cob_regional: false, cob_nacional: true,
+        prod_credito_simple: false, prod_credito_revolvente: false, prod_factoraje: false, prod_arrendamiento: true,
+        exp_menor_1_anio: false, exp_1_anio: true, exp_2_mas_anios: false,
+        sec_comercio: true, sec_industria: true, sec_servicio: true, sec_primario: true,
+        buro_excelente: false, buro_bueno: true, buro_regular: false, buro_malo: false,
+        gar_aval: true, gar_relacion_patrimonial: true, gar_hipotecaria: false, gar_prendaria: false, gar_liquidez: false, gar_contrato: true,
+        solv_utilidad: true, solv_perdida: false, solv_quiebra_tecnica: false,
+      },
+      // ──────────────────────────────────────────────────────
+      // 10. CV CREDIT (EXITUS CAPITAL)
+      // Cobertura: Estatal | Productos: Crédito Simple, Revolvente
+      // Exp: 2+ años | Sector: todos | Buró: Bueno
+      // Garantías: Aval, Hipotecaria, Prendaria | Solvencia: Utilidad, Pérdida
+      // ──────────────────────────────────────────────────────
+      {
+        id: 'cv_credit',
+        nombre: 'CV CREDIT (EXITUS CAPITAL)',
+        cob_local: false, cob_estatal: true, cob_regional: false, cob_nacional: false,
+        prod_credito_simple: true, prod_credito_revolvente: true, prod_factoraje: false, prod_arrendamiento: false,
+        exp_menor_1_anio: false, exp_1_anio: false, exp_2_mas_anios: true,
+        sec_comercio: true, sec_industria: true, sec_servicio: true, sec_primario: true,
+        buro_excelente: false, buro_bueno: true, buro_regular: false, buro_malo: false,
+        gar_aval: true, gar_relacion_patrimonial: false, gar_hipotecaria: true, gar_prendaria: true, gar_liquidez: false, gar_contrato: false,
+        solv_utilidad: true, solv_perdida: true, solv_quiebra_tecnica: false,
+      },
+      // ──────────────────────────────────────────────────────
+      // 11. HELIOS
+      // Cobertura: Nacional | Productos: Crédito Simple, Factoraje
+      // Exp: 2+ años | Sector: todos | Buró: Bueno
+      // Garantías: Aval, Hipotecaria, Liquidez | Solvencia: Utilidad, Quiebra técnica
+      // ──────────────────────────────────────────────────────
+      {
+        id: 'helios',
+        nombre: 'HELIOS',
+        cob_local: false, cob_estatal: false, cob_regional: false, cob_nacional: true,
+        prod_credito_simple: true, prod_credito_revolvente: false, prod_factoraje: true, prod_arrendamiento: false,
+        exp_menor_1_anio: false, exp_1_anio: false, exp_2_mas_anios: true,
+        sec_comercio: true, sec_industria: true, sec_servicio: true, sec_primario: true,
+        buro_excelente: false, buro_bueno: true, buro_regular: false, buro_malo: false,
+        gar_aval: true, gar_relacion_patrimonial: false, gar_hipotecaria: true, gar_prendaria: false, gar_liquidez: true, gar_contrato: false,
+        solv_utilidad: true, solv_perdida: false, solv_quiebra_tecnica: true,
+      },
+      // ──────────────────────────────────────────────────────
+      // 12. XEPELIN
+      // Cobertura: Nacional | Productos: Crédito Simple, Revolvente
+      // Exp: 2+ años | Sector: todos | Buró: Bueno
+      // Garantías: Aval, Hipotecaria | Solvencia: Utilidad, Pérdida
+      // ──────────────────────────────────────────────────────
+      {
+        id: 'xepelin',
+        nombre: 'XEPELIN',
+        cob_local: false, cob_estatal: false, cob_regional: false, cob_nacional: true,
+        prod_credito_simple: true, prod_credito_revolvente: true, prod_factoraje: false, prod_arrendamiento: false,
+        exp_menor_1_anio: false, exp_1_anio: false, exp_2_mas_anios: true,
+        sec_comercio: true, sec_industria: true, sec_servicio: true, sec_primario: true,
+        buro_excelente: false, buro_bueno: true, buro_regular: false, buro_malo: false,
+        gar_aval: true, gar_relacion_patrimonial: false, gar_hipotecaria: true, gar_prendaria: false, gar_liquidez: false, gar_contrato: false,
+        solv_utilidad: true, solv_perdida: true, solv_quiebra_tecnica: false,
+      },
+      // ──────────────────────────────────────────────────────
+      // 13. RFJ CAPITAL
+      // Cobertura: Local | Productos: Crédito Simple
+      // Exp: 2+ años | Sector: todos | Buró: Bueno, Regular
+      // Garantías: Aval, Hipotecaria | Solvencia: Utilidad, Quiebra técnica
+      // ──────────────────────────────────────────────────────
+      {
+        id: 'rfj_capital',
+        nombre: 'RFJ Capital',
+        cob_local: true, cob_estatal: false, cob_regional: false, cob_nacional: false,
+        prod_credito_simple: true, prod_credito_revolvente: false, prod_factoraje: false, prod_arrendamiento: false,
+        exp_menor_1_anio: false, exp_1_anio: false, exp_2_mas_anios: true,
+        sec_comercio: true, sec_industria: true, sec_servicio: true, sec_primario: true,
+        buro_excelente: false, buro_bueno: true, buro_regular: true, buro_malo: false,
+        gar_aval: true, gar_relacion_patrimonial: false, gar_hipotecaria: true, gar_prendaria: false, gar_liquidez: false, gar_contrato: false,
+        solv_utilidad: true, solv_perdida: false, solv_quiebra_tecnica: true,
+      },
+      // ──────────────────────────────────────────────────────
+      // 14. BANCA EMPRESARIAL COPPEL / ARRENDADORA
+      // Cobertura: Estatal | Productos: Crédito Simple, Revolvente, Arrendamiento
+      // Exp: 2+ años | Sector: todos | Buró: Bueno
+      // Garantías: Aval, Hipotecaria, Prendaria | Solvencia: Utilidad
+      // ──────────────────────────────────────────────────────
+      {
+        id: 'coppel_empresarial',
+        nombre: 'BANCA EMPRESARIAL COPPEL / ARRENDADORA',
+        cob_local: false, cob_estatal: true, cob_regional: false, cob_nacional: false,
+        prod_credito_simple: true, prod_credito_revolvente: true, prod_factoraje: false, prod_arrendamiento: true,
+        exp_menor_1_anio: false, exp_1_anio: false, exp_2_mas_anios: true,
+        sec_comercio: true, sec_industria: true, sec_servicio: true, sec_primario: true,
+        buro_excelente: false, buro_bueno: true, buro_regular: false, buro_malo: false,
+        gar_aval: true, gar_relacion_patrimonial: false, gar_hipotecaria: true, gar_prendaria: true, gar_liquidez: false, gar_contrato: false,
+        solv_utilidad: true, solv_perdida: false, solv_quiebra_tecnica: false,
+      },
+      // ──────────────────────────────────────────────────────
+      // 15. FINKARGO
+      // Cobertura: Nacional | Productos: Factoraje
+      // Exp: Menor a 1 año | Sector: Comercio, Industria, Servicio | Buró: Mal Buró
+      // Garantías: Contrato | Solvencia: Utilidad, Pérdida
+      // ──────────────────────────────────────────────────────
+      {
+        id: 'finkargo',
+        nombre: 'FINKARGO',
+        cob_local: false, cob_estatal: false, cob_regional: false, cob_nacional: true,
+        prod_credito_simple: false, prod_credito_revolvente: false, prod_factoraje: true, prod_arrendamiento: false,
+        exp_menor_1_anio: true, exp_1_anio: false, exp_2_mas_anios: false,
+        sec_comercio: true, sec_industria: true, sec_servicio: true, sec_primario: false,
+        buro_excelente: false, buro_bueno: false, buro_regular: false, buro_malo: true,
+        gar_aval: false, gar_relacion_patrimonial: false, gar_hipotecaria: false, gar_prendaria: false, gar_liquidez: false, gar_contrato: true,
+        solv_utilidad: true, solv_perdida: true, solv_quiebra_tecnica: false,
+      },
+      // ──────────────────────────────────────────────────────
+      // 16. INVERFIN
+      // Cobertura: Nacional | Productos: Factoraje
+      // Exp: Menor a 1 año | Sector: Comercio, Industria, Servicio | Buró: Regular
+      // Garantías: Aval | Solvencia: Utilidad
+      // ──────────────────────────────────────────────────────
+      {
+        id: 'inverfin',
+        nombre: 'INVERFIN',
+        cob_local: false, cob_estatal: false, cob_regional: false, cob_nacional: true,
+        prod_credito_simple: false, prod_credito_revolvente: false, prod_factoraje: true, prod_arrendamiento: false,
+        exp_menor_1_anio: true, exp_1_anio: false, exp_2_mas_anios: false,
+        sec_comercio: true, sec_industria: true, sec_servicio: true, sec_primario: false,
+        buro_excelente: false, buro_bueno: false, buro_regular: true, buro_malo: false,
+        gar_aval: true, gar_relacion_patrimonial: false, gar_hipotecaria: false, gar_prendaria: false, gar_liquidez: false, gar_contrato: false,
+        solv_utilidad: true, solv_perdida: false, solv_quiebra_tecnica: false,
+      },
+    ]
+
+    for (const banco of bancos) {
+      await prisma.banco.upsert({
+        where: { id: banco.id },
+        update: banco,
+        create: banco,
+      })
+    }
+    console.log(`✓ Bancos seeded (${bancos.length} instituciones)`)
+
     console.log('\n✅ Seed complete!')
   } catch (err) {
     console.error('❌ Seed error:', err)

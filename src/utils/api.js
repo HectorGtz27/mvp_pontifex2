@@ -114,6 +114,38 @@ export async function fetchCredits() {
   return apiFetch('/credits')
 }
 
+// ─── Bancos con convenio ───────────────────────────────────
+export async function fetchBancos() {
+  return apiFetch('/bancos')
+}
+
+export async function fetchBancosMatch(filtros = {}) {
+  const params = new URLSearchParams()
+  Object.entries(filtros).forEach(([k, v]) => { if (v) params.set(k, v) })
+  const suffix = params.toString() ? `?${params.toString()}` : ''
+  return apiFetch(`/bancos/match/filtros${suffix}`)
+}
+
+export async function createBanco(data) {
+  const res = await fetch(`${BASE}/bancos`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `API error ${res.status}`) }
+  return res.json()
+}
+
+export async function updateBanco(id, data) {
+  const res = await fetch(`${BASE}/bancos/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `API error ${res.status}`) }
+  return res.json()
+}
+
 // ─── Backward compat aliases ───────────────────────────────
 export const fetchApplications = fetchSolicitudes
 export const fetchApplication = fetchSolicitud

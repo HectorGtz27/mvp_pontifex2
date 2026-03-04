@@ -1,7 +1,8 @@
-import { Routes, Route, Link, Navigate } from 'react-router-dom'
+import { Routes, Route, Link, NavLink, Navigate } from 'react-router-dom'
 import FullFlow from './pages/FullFlow'
 import Landing from './pages/Landing'
 import AdminSolicitudes from './pages/AdminSolicitudes'
+import AdminBancos from './pages/AdminBancos'
 
 function App() {
   return (
@@ -12,7 +13,28 @@ function App() {
             <div className="w-8 h-8 rounded-md bg-pontifex-600 flex items-center justify-center text-white font-semibold text-sm">P</div>
             <span className="font-semibold text-slate-800">Pontifex</span>
           </Link>
-          <span className="text-sm text-slate-500">Flujo: Documentos → Decisión</span>
+          <nav className="flex items-center gap-1">
+            <NavLink
+              to="/solicitudes"
+              className={({ isActive }) =>
+                `text-sm px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                  isActive ? 'bg-pontifex-50 text-pontifex-700' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                }`
+              }
+            >
+              Solicitudes
+            </NavLink>
+            <NavLink
+              to="/bancos"
+              className={({ isActive }) =>
+                `text-sm px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                  isActive ? 'bg-pontifex-50 text-pontifex-700' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                }`
+              }
+            >
+              Bancos
+            </NavLink>
+          </nav>
         </div>
       </header>
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-8">
@@ -20,6 +42,7 @@ function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/solicitud" element={<FullFlow />} />
           <Route path="/solicitudes" element={<AdminSolicitudes />} />
+          <Route path="/bancos" element={<AdminBancos />} />
           <Route path="/documentos" element={<Navigate to="/" replace />} />
           <Route path="/decision" element={<Navigate to="/" replace />} />
           <Route path="/covenants" element={<Navigate to="/" replace />} />

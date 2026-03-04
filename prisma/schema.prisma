@@ -230,6 +230,7 @@ model Recomendacion {
   // ── Relations ──
   solicitud   Solicitud                @relation(fields: [solicitud_id], references: [id], onDelete: Cascade)
   condiciones CondicionRecomendacion[]
+  bancos      RecomendacionBanco[]
 
   @@map("recomendaciones")
 }
@@ -317,4 +318,80 @@ model AlertaCredito {
 
   @@index([credito_id])
   @@map("alertas_credito")
+}
+
+// ─── 16. Bancos (instituciones financieras con convenio) ─────
+
+model Banco {
+  id     String  @id @db.VarChar(60)
+  nombre String  @db.VarChar(200)
+  activo Boolean @default(true)
+
+  // ── Cobertura ──
+  cob_local     Boolean @default(false)
+  cob_estatal   Boolean @default(false)
+  cob_regional  Boolean @default(false)
+  cob_nacional  Boolean @default(false)
+
+  // ── Producto ──
+  prod_credito_simple     Boolean @default(false)
+  prod_credito_revolvente Boolean @default(false)
+  prod_factoraje          Boolean @default(false)
+  prod_arrendamiento      Boolean @default(false)
+
+  // ── Experiencia mínima requerida ──
+  exp_menor_1_anio Boolean @default(false)
+  exp_1_anio       Boolean @default(false)
+  exp_2_mas_anios  Boolean @default(false)
+
+  // ── Sector empresarial ──
+  sec_comercio  Boolean @default(false)
+  sec_industria Boolean @default(false)
+  sec_servicio  Boolean @default(false)
+  sec_primario  Boolean @default(false)
+
+  // ── Solvencia moral (Buró de Crédito) ──
+  buro_excelente Boolean @default(false) // MOP 0
+  buro_bueno     Boolean @default(false) // MOP 01,0
+  buro_regular   Boolean @default(false) // MOP 01,02,0
+  buro_malo      Boolean @default(false) // Mal buró
+
+  // ── Fincabilidad (tipo de garantías) ──
+  gar_aval                  Boolean @default(false)
+  gar_relacion_patrimonial  Boolean @default(false)
+  gar_hipotecaria           Boolean @default(false)
+  gar_prendaria             Boolean @default(false)
+  gar_liquidez              Boolean @default(false)
+  gar_contrato              Boolean @default(false)
+
+  // ── Solvencia financiera ──
+  solv_utilidad        Boolean @default(false)
+  solv_perdida         Boolean @default(false)
+  solv_quiebra_tecnica Boolean @default(false)
+
+  // ── Timestamps ──
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  // ── Relations ──
+  recomendaciones_bancos RecomendacionBanco[]
+
+  @@map("bancos")
+}
+
+// ─── 17. Banco recomendado por solicitud ─────────────────────
+
+model RecomendacionBanco {
+  id               Int    @id @default(autoincrement())
+  recomendacion_id Int
+  banco_id         String @db.VarChar(60)
+  orden            Int    @default(1) // posición en el ranking
+  notas            String? @db.Text
+
+  // ── Relations ──
+  recomendacion Recomendacion @relation(fields: [recomendacion_id], references: [id], onDelete: Cascade)
+  banco         Banco         @relation(fields: [banco_id], references: [id])
+
+  @@index([recomendacion_id])
+  @@map("recomendaciones_bancos")
 }
