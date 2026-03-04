@@ -3,6 +3,7 @@ import FullFlow from './pages/FullFlow'
 import Landing from './pages/Landing'
 import AdminSolicitudes from './pages/AdminSolicitudes'
 import AdminBancos from './pages/AdminBancos'
+import AdminClientes from './pages/AdminClientes'
 
 function App() {
   return (
@@ -14,6 +15,16 @@ function App() {
             <span className="font-semibold text-slate-800">Pontifex</span>
           </Link>
           <nav className="flex items-center gap-1">
+            <NavLink
+              to="/clientes"
+              className={({ isActive }) =>
+                `text-sm px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                  isActive ? 'bg-pontifex-50 text-pontifex-700' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                }`
+              }
+            >
+              Clientes
+            </NavLink>
             <NavLink
               to="/solicitudes"
               className={({ isActive }) =>
@@ -42,6 +53,7 @@ function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/solicitud" element={<FullFlow />} />
           <Route path="/solicitudes" element={<AdminSolicitudes />} />
+          <Route path="/clientes" element={<AdminClientes />} />
           <Route path="/bancos" element={<AdminBancos />} />
           <Route path="/documentos" element={<Navigate to="/" replace />} />
           <Route path="/decision" element={<Navigate to="/" replace />} />
