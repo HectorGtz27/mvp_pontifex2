@@ -6,7 +6,7 @@ function Landing() {
   return (
     <div className="flex flex-col items-center justify-center min-h-[70vh] gap-10">
       <div className="text-center">
-        <h1 className="text-3xl font-bold text-slate-800">Bienvenido a Pontifex</h1>
+        <h1 className="text-3xl font-bold text-slate-800">Bienvenido a Pontifex Credit Lab</h1>
         <p className="mt-2 text-slate-500 text-lg">¿Qué deseas hacer?</p>
       </div>
 

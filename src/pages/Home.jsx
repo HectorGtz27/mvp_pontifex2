@@ -4,7 +4,7 @@ export default function Home() {
   return (
     <div className="space-y-10">
       <div className="text-center py-8">
-        <h1 className="text-3xl font-bold text-slate-900 mb-2">Pontifex</h1>
+        <h1 className="text-3xl font-bold text-slate-900 mb-2">Pontifex Credit Lab</h1>
         <p className="text-slate-600 max-w-xl mx-auto">
           Plataforma de evaluación crediticia para financiación del desarrollo sostenible.
           Este mockup muestra las soluciones a los 3 problemas principales.
