@@ -66,14 +66,15 @@ model Solicitud {
   updated_at             DateTime @updatedAt
 
   // ── Relations ──
-  cliente          Cliente          @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
-  documentos       Documento[]
-  campos_extraidos CampoExtraido[]
-  score_crediticio ScoreCrediticio?
-  indicadores      Indicador[]
-  recomendacion    Recomendacion?
-  decision         Decision?
-  creditos         Credito[]
+  cliente           Cliente           @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
+  documentos        Documento[]
+  campos_extraidos  CampoExtraido[]
+  score_crediticio  ScoreCrediticio?
+  indicadores       Indicador[]
+  recomendacion     Recomendacion?
+  decision          Decision?
+  creditos          Credito[]
+  cuentas_bancarias CuentaBancaria[]
 
   @@index([cliente_id])
   @@map("solicitudes")
@@ -109,30 +110,59 @@ model TipoDocumento {
   @@map("tipos_documento")
 }
 
-// ─── 5. Documento (archivo subido con datos OCR) ──────────────
+// ─── 5. Cuenta Bancaria (banco + divisa declarados por el cliente) ───
+
+model CuentaBancaria {
+  id           String  @id @default(uuid()) @db.Uuid
+  solicitud_id String  @db.Uuid
+  banco        String  @db.VarChar(100)     // "BBVA", "Banamex", "Santander"…
+  divisa       String  @default("MXN") @db.VarChar(10)  // "MXN" | "USD"
+  alias        String? @db.VarChar(200)     // etiqueta libre del usuario
+  created_at   DateTime @default(now())
+
+  // ── Relations ──
+  solicitud  Solicitud   @relation(fields: [solicitud_id], references: [id], onDelete: Cascade)
+  documentos Documento[]
+
+  @@index([solicitud_id])
+  @@map("cuentas_bancarias")
+}
+
+// ─── 6. Documento (archivo subido con datos OCR) ──────────────
 
 model Documento {
-  id                String   @id @default(uuid()) @db.Uuid
-  solicitud_id      String   @db.Uuid
-  tipo_documento_id String   @db.VarChar(50)
-  nombre_archivo    String   @db.VarChar(500)
-  s3_url            String   @db.Text
-  s3_key            String   @db.VarChar(500)
-  mime_type         String   @db.VarChar(100)
-  tamano_archivo    Int
-  extracted_data    Json?
-  textract_error    String?  @db.Text
-  estado            String   @default("pendiente") @db.VarChar(30)
-  confianza         Decimal? @db.Decimal(5, 2)
-  created_at        DateTime @default(now())
+  id                  String   @id @default(uuid()) @db.Uuid
+  solicitud_id        String   @db.Uuid
+  tipo_documento_id   String   @db.VarChar(50)
+  // ── Contexto bancario (solo para estados de cuenta) ──
+  cuenta_bancaria_id  String?  @db.Uuid
+  periodo             String?  @db.VarChar(7)    // "YYYY-MM"
+  divisa              String?  @db.VarChar(10)   // "MXN" | "USD"
+  abonos              Decimal? @db.Decimal(18, 2)
+  retiros             Decimal? @db.Decimal(18, 2)
+  saldo_promedio      Decimal? @db.Decimal(18, 2)
+  banco               String?  @db.VarChar(100)
+  // ── Archivo ──
+  nombre_archivo      String   @db.VarChar(500)
+  s3_url              String   @db.Text
+  s3_key              String   @db.VarChar(500)
+  mime_type           String   @db.VarChar(100)
+  tamano_archivo      Int
+  extracted_data      Json?
+  textract_error      String?  @db.Text
+  estado              String   @default("pendiente") @db.VarChar(30)
+  confianza           Decimal? @db.Decimal(5, 2)
+  created_at          DateTime @default(now())
 
   // ── Relations ──
   solicitud        Solicitud        @relation(fields: [solicitud_id], references: [id], onDelete: Cascade)
   tipo_documento   TipoDocumento    @relation(fields: [tipo_documento_id], references: [id])
+  cuenta_bancaria  CuentaBancaria?  @relation(fields: [cuenta_bancaria_id], references: [id], onDelete: SetNull)
   campos_extraidos CampoExtraido[]
 
   @@index([solicitud_id])
   @@index([tipo_documento_id])
+  @@index([cuenta_bancaria_id])
   @@map("documentos")
 }
 

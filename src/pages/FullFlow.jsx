@@ -22,10 +22,25 @@ import {
   createCliente,
   createSolicitud,
   submitDecision,
+  fetchCuentasBancarias,
+  createCuentaBancaria,
+  deleteCuentaBancaria,
 } from '../utils/api'
 import { downloadMasterClientXlsx } from '../utils/masterClientXlsx'
 
 const GRADE_COLORS = { A: 'bg-emerald-100 text-emerald-800', B: 'bg-sky-100 text-sky-800', C: 'bg-amber-100 text-amber-800', D: 'bg-red-100 text-red-800' }
+
+const BANCOS_MX = ['BBVA', 'Citibanamex', 'Santander', 'Banorte', 'HSBC', 'Scotiabank', 'Bajío', 'Inbursa', 'Afirme', 'Mifel', 'Otro']
+
+// Genera los últimos N meses en formato YYYY-MM (del más antiguo al más reciente)
+function getLast12Months() {
+  const now = new Date()
+  return Array.from({ length: 12 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - 11 + i, 1)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  })
+}
+const MESES_CORTOS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
 
 const STEPS = [
   { id: 0, label: 'Datos de la solicitud', short: 'Datos' },
@@ -83,6 +98,12 @@ export default function FullFlow() {
   const [scoreData, setScoreData] = useState(null)
   const [kpisData, setKpisData] = useState([])
   const [bankStatements, setBankStatements] = useState([]) // [{ mes, abonos, retiros, banco_detectado }]
+  // ── Cuentas Bancarias (est. de cuenta multi-archivo) ──
+  const [cuentasBancarias, setCuentasBancarias] = useState([])
+  const [bsNewBanco, setBsNewBanco] = useState('')
+  const [bsNewDivisa, setBsNewDivisa] = useState('MXN')
+  const [bsAddingCuenta, setBsAddingCuenta] = useState(false)
+  const [bsBulkState, setBsBulkState] = useState({}) // { [cuentaId]: { uploading, progress:{done,total}, results:[] } }
   const [recommendationData, setRecommendationData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [savingApp, setSavingApp] = useState(false)
@@ -453,6 +474,92 @@ export default function FullFlow() {
 
   const CHART_COLORS = ['#237a49', '#2d9d6b', '#54b57d', '#8bd1a8']
 
+  // ────────────────────────────────────────────────────────────
+  // Cuentas Bancarias handlers
+  // ────────────────────────────────────────────────────────────
+
+  const handleOpenBankStatements = async () => {
+    if (solicitudId) {
+      try {
+        const data = await fetchCuentasBancarias(solicitudId)
+        setCuentasBancarias(data)
+      } catch (e) { console.error(e) }
+    }
+    setDocSubStep('bank-statements')
+  }
+
+  const handleAddCuenta = async () => {
+    if (!bsNewBanco || !solicitudId) return
+    setBsAddingCuenta(true)
+    try {
+      const banco = bsNewBanco === 'Otro' ? prompt('Nombre del banco:') || 'Otro' : bsNewBanco
+      const nueva = await createCuentaBancaria({ solicitudId, banco, divisa: bsNewDivisa })
+      setCuentasBancarias(prev => [...prev, nueva])
+      setBsNewBanco('')
+      setBsNewDivisa('MXN')
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setBsAddingCuenta(false)
+    }
+  }
+
+  const handleDeleteCuenta = async (id) => {
+    if (!confirm('¿Eliminar esta cuenta y todos sus documentos?')) return
+    try {
+      await deleteCuentaBancaria(id)
+      setCuentasBancarias(prev => prev.filter(c => c.id !== id))
+    } catch (e) { alert(e.message) }
+  }
+
+  const handleBulkUpload = async (cuentaId, files) => {
+    if (!files || files.length === 0) return
+    setBsBulkState(prev => ({
+      ...prev,
+      [cuentaId]: { uploading: true, progress: { done: 0, total: files.length }, results: [] }
+    }))
+    const formDataUpload = new FormData()
+    Array.from(files).forEach(f => formDataUpload.append('files', f))
+    formDataUpload.append('solicitudId', solicitudId)
+    formDataUpload.append('cuentaBancariaId', cuentaId)
+    try {
+      const res = await fetch('/api/upload/bulk', { method: 'POST', body: formDataUpload })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Error en bulk upload')
+      // Actualizar resultados
+      setBsBulkState(prev => ({
+        ...prev,
+        [cuentaId]: { uploading: false, progress: { done: data.successful, total: data.total }, results: data.results }
+      }))
+      // Refrescar cobertura de esta cuenta
+      const updated = await fetchCuentasBancarias(solicitudId)
+      setCuentasBancarias(updated)
+      // Actualizar bankStatements para Excel
+      data.results.forEach(r => {
+        if (r.success && r.extractedData?.mes) {
+          setBankStatements(prev => {
+            const filtered = prev.filter(b => !(b.mes === r.extractedData.mes && b.banco_detectado === r.extractedData.banco_detectado))
+            return [...filtered, {
+              mes: r.extractedData.mes,
+              abonos: r.extractedData.abonos,
+              retiros: r.extractedData.retiros,
+              saldo_promedio: r.extractedData.saldo_promedio,
+              divisa: r.extractedData.divisa,
+              banco_detectado: r.extractedData.banco_detectado,
+            }]
+          })
+        }
+      })
+      // Marcar edos_cuenta_bancarios como validado si hay al menos un doc
+      if (data.successful > 0) {
+        setUploadedDocs(prev => ({ ...prev, edos_cuenta_bancarios: { status: 'validated', fileName: `${data.successful} estados` } }))
+      }
+    } catch (e) {
+      setBsBulkState(prev => ({ ...prev, [cuentaId]: { uploading: false, progress: { done: 0, total: files.length }, results: [], error: e.message } }))
+      alert('Error al subir: ' + e.message)
+    }
+  }
+
   const resetFlow = () => {
     setCurrentStep(0)
     setFormData(INITIAL_FORM)
@@ -470,6 +577,8 @@ export default function FullFlow() {
     setScoreData(null)
     setKpisData([])
     setRecommendationData(null)
+    setCuentasBancarias([])
+    setBsBulkState({})
   }
 
   return (
@@ -710,13 +819,23 @@ export default function FullFlow() {
                             </span>
                             <span className="flex-1 text-slate-800">{doc.label}</span>
                             {s.fileName && <span className="text-sm text-slate-500 font-mono">{s.fileName}</span>}
-                            <button
-                              type="button"
-                              onClick={() => handleSelectDocumentToReplace(doc)}
-                              className="text-sm font-medium text-pontifex-600 hover:text-pontifex-700"
-                            >
-                              {s.status === 'pending' ? 'Subir' : 'Reemplazar'}
-                            </button>
+                            {doc.id === 'edos_cuenta_bancarios' ? (
+                              <button
+                                type="button"
+                                onClick={handleOpenBankStatements}
+                                className="text-sm font-medium text-pontifex-600 hover:text-pontifex-700"
+                              >
+                                Gestionar {cuentasBancarias.length > 0 ? `(${cuentasBancarias.length} cuenta${cuentasBancarias.length !== 1 ? 's' : ''})` : ''}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleSelectDocumentToReplace(doc)}
+                                className="text-sm font-medium text-pontifex-600 hover:text-pontifex-700"
+                              >
+                                {s.status === 'pending' ? 'Subir' : 'Reemplazar'}
+                              </button>
+                            )}
                           </li>
                         )
                       })}
@@ -815,6 +934,187 @@ export default function FullFlow() {
               </div>
             </>
           )}
+
+          {docSubStep === 'bank-statements' && (() => {
+            const last12 = getLast12Months()
+            return (
+              <div className="space-y-5">
+                {/* Header */}
+                <div className="flex items-center justify-between">
+                  <h2 className="font-semibold text-slate-900 text-lg">Estados de cuenta bancarios</h2>
+                  <button
+                    type="button"
+                    onClick={() => setDocSubStep('checklist')}
+                    className="text-sm text-slate-500 hover:text-slate-700"
+                  >
+                    ← Volver al listado
+                  </button>
+                </div>
+
+                {/* Add new account */}
+                <div className="bg-white rounded-xl border border-slate-200 p-4">
+                  <p className="text-sm font-semibold text-slate-700 mb-3">Declarar nueva cuenta</p>
+                  <div className="flex flex-wrap gap-2 items-center">
+                    <select
+                      value={bsNewBanco}
+                      onChange={e => setBsNewBanco(e.target.value)}
+                      className="px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-pontifex-300"
+                    >
+                      <option value="">Seleccionar banco…</option>
+                      {BANCOS_MX.map(b => <option key={b} value={b}>{b}</option>)}
+                    </select>
+                    <div className="flex rounded-lg border border-slate-200 overflow-hidden text-sm font-medium">
+                      {['MXN', 'USD'].map(d => (
+                        <button
+                          key={d}
+                          type="button"
+                          onClick={() => setBsNewDivisa(d)}
+                          className={`px-4 py-2 transition-colors ${
+                            bsNewDivisa === d
+                              ? 'bg-pontifex-600 text-white'
+                              : 'bg-white text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >{d}</button>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAddCuenta}
+                      disabled={!bsNewBanco || bsAddingCuenta}
+                      className="px-4 py-2 rounded-lg bg-pontifex-600 text-white text-sm font-medium hover:bg-pontifex-700 disabled:opacity-40"
+                    >
+                      {bsAddingCuenta ? 'Agregando…' : '+ Agregar cuenta'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* No accounts */}
+                {cuentasBancarias.length === 0 && (
+                  <p className="text-center text-slate-500 text-sm py-8">Declara las cuentas bancarias para comenzar la carga de estados.</p>
+                )}
+
+                {/* Account cards */}
+                {cuentasBancarias.map(cuenta => {
+                  const bs = bsBulkState[cuenta.id] || {}
+                  const mesSet = new Set(cuenta.mesesCubiertos || [])
+                  const totalMeses = mesSet.size
+                  return (
+                    <div key={cuenta.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                      {/* Card header */}
+                      <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <span className="font-semibold text-slate-800">{cuenta.banco}</span>
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                            cuenta.divisa === 'USD' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'
+                          }`}>{cuenta.divisa}</span>
+                          <span className="text-xs text-slate-500">{totalMeses}/12 meses</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCuenta(cuenta.id)}
+                          className="text-slate-400 hover:text-red-500 text-sm"
+                          title="Eliminar cuenta"
+                        >✕</button>
+                      </div>
+
+                      <div className="p-4 space-y-4">
+                        {/* Coverage grid */}
+                        <div>
+                          <p className="text-xs text-slate-500 mb-2">Cobertura (últimos 12 meses)</p>
+                          <div className="flex gap-1 flex-wrap">
+                            {last12.map(periodo => {
+                              const [yr, mo] = periodo.split('-')
+                              const covered = mesSet.has(periodo)
+                              return (
+                                <div
+                                  key={periodo}
+                                  title={`${MESES_CORTOS[parseInt(mo)-1]} ${yr}${covered ? ' — subido' : ' — faltante'}`}
+                                  className={`w-10 h-8 rounded flex flex-col items-center justify-center text-xs font-medium ${
+                                    covered ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'
+                                  }`}
+                                >
+                                  <span>{MESES_CORTOS[parseInt(mo)-1]}</span>
+                                  <span className="text-[10px]">{yr.slice(2)}</span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Upload zone */}
+                        {bs.uploading ? (
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-xs text-slate-600">
+                              <span>Procesando…</span>
+                              <span>{bs.progress?.done ?? 0}/{bs.progress?.total ?? '?'}</span>
+                            </div>
+                            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                              <div
+                                className="h-2 bg-pontifex-500 rounded-full transition-all"
+                                style={{ width: `${bs.progress?.total ? (bs.progress.done / bs.progress.total) * 100 : 0}%` }}
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <label className="flex items-center gap-3 px-4 py-3 rounded-lg border-2 border-dashed border-slate-200 hover:border-pontifex-400 hover:bg-pontifex-50 cursor-pointer transition-colors">
+                            <span className="text-2xl">📁</span>
+                            <div>
+                              <p className="text-sm font-medium text-slate-700">Seleccionar estados de cuenta</p>
+                              <p className="text-xs text-slate-500">Hasta 12 PDFs a la vez — se procesan automáticamente</p>
+                            </div>
+                            <input
+                              type="file"
+                              multiple
+                              accept=".pdf,.jpg,.jpeg,.png"
+                              className="hidden"
+                              onChange={e => handleBulkUpload(cuenta.id, e.target.files)}
+                            />
+                          </label>
+                        )}
+
+                        {/* Results */}
+                        {bs.results && bs.results.length > 0 && (
+                          <div className="space-y-1">
+                            <p className="text-xs font-semibold text-slate-600">Resultados del lote:</p>
+                            {bs.results.map((r, i) => (
+                              <div key={i} className={`flex flex-wrap items-center gap-2 text-xs px-3 py-1.5 rounded-lg ${
+                                r.success ? 'bg-emerald-50' : 'bg-red-50'
+                              }`}>
+                                <span>{r.success ? '✅' : '❌'}</span>
+                                <span className="font-mono text-slate-700 truncate max-w-[180px]">{r.fileName}</span>
+                                {r.success && r.extractedData && (
+                                  <>
+                                    {r.extractedData.mes && <span className="bg-white border border-slate-200 px-2 py-0.5 rounded text-slate-600">{r.extractedData.mes}</span>}
+                                    {r.extractedData.abonos != null && (
+                                      <span className="text-emerald-700">↑ {new Intl.NumberFormat('es-MX',{style:'currency',currency:r.extractedData.divisa||'MXN',maximumFractionDigits:0}).format(r.extractedData.abonos)}</span>
+                                    )}
+                                    {r.extractedData.retiros != null && (
+                                      <span className="text-red-600">↓ {new Intl.NumberFormat('es-MX',{style:'currency',currency:r.extractedData.divisa||'MXN',maximumFractionDigits:0}).format(r.extractedData.retiros)}</span>
+                                    )}
+                                    {r.extractedData.saldo_promedio != null && (
+                                      <span className="text-slate-600">∅ {new Intl.NumberFormat('es-MX',{style:'currency',currency:r.extractedData.divisa||'MXN',maximumFractionDigits:0}).format(r.extractedData.saldo_promedio)}</span>
+                                    )}
+                                    {r.extractedData.confianza && (
+                                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                        r.extractedData.confianza === 'alta' ? 'bg-emerald-100 text-emerald-700' :
+                                        r.extractedData.confianza === 'media' ? 'bg-amber-100 text-amber-700' :
+                                        'bg-red-100 text-red-700'
+                                      }`}>{r.extractedData.confianza}</span>
+                                    )}
+                                  </>
+                                )}
+                                {!r.success && <span className="text-red-600">{r.error}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })()}
 
           {docSubStep === 'upload' && (
             <>

@@ -146,6 +146,28 @@ export async function updateBanco(id, data) {
   return res.json()
 }
 
+// ─── Cuentas Bancarias ────────────────────────────────────
+export async function fetchCuentasBancarias(solicitudId) {
+  return apiFetch(`/solicitudes/${solicitudId}/cuentas-bancarias`)
+}
+
+export async function createCuentaBancaria(data) {
+  const res = await fetch(`${BASE}/cuentas-bancarias`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  const body = await res.json()
+  if (!res.ok) throw new Error(body.error || `API error ${res.status}`)
+  return body
+}
+
+export async function deleteCuentaBancaria(id) {
+  const res = await fetch(`${BASE}/cuentas-bancarias/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`API error ${res.status}`)
+  return res.json()
+}
+
 // ─── Backward compat aliases ───────────────────────────────
 export const fetchApplications = fetchSolicitudes
 export const fetchApplication = fetchSolicitud

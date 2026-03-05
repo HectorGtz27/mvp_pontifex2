@@ -664,6 +664,121 @@ router.get('/bancos/match/filtros', async (req, res) => {
   }
 })
 
+// ═══════════════════════════════════════════════════════════════
+// Cuentas Bancarias (por solicitud)
+// ═══════════════════════════════════════════════════════════════
+
+// GET /api/solicitudes/:id/cuentas-bancarias
+// Devuelve las cuentas declaradas con cobertura de meses subidos
+router.get('/solicitudes/:id/cuentas-bancarias', async (req, res) => {
+  try {
+    const cuentas = await prisma.cuentaBancaria.findMany({
+      where: { solicitud_id: req.params.id },
+      orderBy: [{ banco: 'asc' }, { divisa: 'asc' }],
+      include: {
+        documentos: {
+          where: { tipo_documento_id: { in: ['edos_cuenta_bancarios', 'estado_cuenta_bancario'] } },
+          select: {
+            id: true,
+            periodo: true,
+            divisa: true,
+            banco: true,
+            abonos: true,
+            retiros: true,
+            saldo_promedio: true,
+            confianza: true,
+            estado: true,
+            nombre_archivo: true,
+            created_at: true,
+          },
+          orderBy: { periodo: 'asc' },
+        },
+      },
+    })
+
+    res.json(cuentas.map(c => ({
+      id: c.id,
+      solicitudId: c.solicitud_id,
+      banco: c.banco,
+      divisa: c.divisa,
+      alias: c.alias,
+      createdAt: c.created_at,
+      documentos: c.documentos.map(d => ({
+        id: d.id,
+        periodo: d.periodo,
+        divisa: d.divisa,
+        banco: d.banco,
+        abonos: d.abonos != null ? Number(d.abonos) : null,
+        retiros: d.retiros != null ? Number(d.retiros) : null,
+        saldoPromedio: d.saldo_promedio != null ? Number(d.saldo_promedio) : null,
+        confianza: d.confianza != null ? Number(d.confianza) : null,
+        estado: d.estado,
+        nombreArchivo: d.nombre_archivo,
+        createdAt: d.created_at,
+      })),
+      // Cobertura: meses con documento subido
+      mesesCubiertos: c.documentos
+        .map(d => d.periodo)
+        .filter(Boolean)
+        .sort(),
+    })))
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /api/cuentas-bancarias
+// Crea una nueva cuenta bancaria para una solicitud
+router.post('/cuentas-bancarias', async (req, res) => {
+  try {
+    const { solicitudId, banco, divisa, alias } = req.body
+    if (!solicitudId || !banco || !divisa) {
+      return res.status(400).json({ error: 'solicitudId, banco y divisa son requeridos' })
+    }
+    // Verificar que no exista ya la misma combinación banco+divisa para esta solicitud
+    const existing = await prisma.cuentaBancaria.findFirst({
+      where: { solicitud_id: solicitudId, banco, divisa },
+    })
+    if (existing) {
+      return res.status(409).json({
+        error: `Ya existe una cuenta ${banco} ${divisa} para esta solicitud`,
+        id: existing.id,
+      })
+    }
+    const cuenta = await prisma.cuentaBancaria.create({
+      data: {
+        solicitud_id: solicitudId,
+        banco,
+        divisa,
+        alias: alias || null,
+      },
+    })
+    res.status(201).json({
+      id: cuenta.id,
+      solicitudId: cuenta.solicitud_id,
+      banco: cuenta.banco,
+      divisa: cuenta.divisa,
+      alias: cuenta.alias,
+      createdAt: cuenta.created_at,
+      documentos: [],
+      mesesCubiertos: [],
+    })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+// DELETE /api/cuentas-bancarias/:id
+// Elimina una cuenta y sus documentos asociados (CASCADE en BD)
+router.delete('/cuentas-bancarias/:id', async (req, res) => {
+  try {
+    await prisma.cuentaBancaria.delete({ where: { id: req.params.id } })
+    res.json({ success: true })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
 // POST /api/bancos — crear banco (admin)
 router.post('/bancos', async (req, res) => {
   try {

@@ -17,6 +17,51 @@ export default function DocumentUpload() {
     fetchDocumentTypes().then(setDocumentTypes).catch(() => setDocumentTypes([]))
   }, [])
 
+  // Maps raw extractedData from the API into rows for the extraction table
+  const buildExtractedFields = (extractedData, docTypeId) => {
+    if (!extractedData) return []
+
+    // Bank statement
+    if (docTypeId === 'edos_cuenta_bancarios' || docTypeId === 'estado_cuenta_bancario') {
+      return [
+        { name: 'Banco', value: extractedData.banco_detectado ?? '—', valid: !!extractedData.banco_detectado },
+        { name: 'Mes del estado de cuenta', value: extractedData.mes ?? '—', valid: !!extractedData.mes },
+        {
+          name: 'Total abonos / depósitos',
+          value: extractedData.abonos != null
+            ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(extractedData.abonos)
+            : '—',
+          valid: extractedData.abonos != null,
+        },
+        {
+          name: 'Total retiros / cargos',
+          value: extractedData.retiros != null
+            ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(extractedData.retiros)
+            : '—',
+          valid: extractedData.retiros != null,
+        },
+        { name: 'Confianza de extracción', value: extractedData.confianza ?? '—', valid: extractedData.confianza === 'alta' },
+      ]
+    }
+
+    // Constancia de Situación Fiscal (and other structured docs)
+    const CSF_LABELS = {
+      razon_social: 'Razón social',
+      rfc: 'RFC',
+      nombre_comercial: 'Nombre comercial',
+      domicilio_fiscal: 'Domicilio fiscal',
+      ciudad: 'Ciudad',
+      estado: 'Estado',
+    }
+    return Object.entries(CSF_LABELS)
+      .map(([key, label]) => ({
+        name: label,
+        value: extractedData[key] ?? '—',
+        valid: !!extractedData[key],
+      }))
+      .filter(r => r.value !== '—' || ['Razón social', 'RFC'].includes(r.name))
+  }
+
   const handleFileUpload = async (file) => {
     if (!file) return
 
@@ -40,9 +85,15 @@ export default function DocumentUpload() {
       if (!res.ok || !data.success) {
         setUploadError(data.error || 'Error al subir el archivo.')
       } else {
-        setUploadResult(data)
+        const extractedFields = buildExtractedFields(data.extractedData, selectedType?.id)
+        const enriched = { ...data, extractedFields }
+        setUploadResult(enriched)
         if (selectedType?.id) {
-          setUploadedDocs(prev => ({ ...prev, [selectedType.id]: { status: 'validated', fileName: data.fileName } }))
+          setUploadedDocs(prev => ({ ...prev, [selectedType.id]: { status: 'validated', fileName: file.name } }))
+        }
+        // Auto-navigate to extraction view if we got data back
+        if (data.extractedData) {
+          setStep('extraction')
         }
       }
     } catch (err) {
@@ -155,7 +206,10 @@ export default function DocumentUpload() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
-                  <p className="text-slate-600">Subiendo archivo a S3...</p>
+                  <p className="text-slate-600 font-medium">Procesando documento...</p>
+                  {(selectedType?.id === 'edos_cuenta_bancarios' || selectedType?.id === 'constancia_situacion_fiscal') && (
+                    <p className="text-xs text-slate-400">Extrayendo datos con OCR + IA · puede tomar ~30 segundos</p>
+                  )}
                 </div>
               ) : (
                 <>
@@ -178,11 +232,9 @@ export default function DocumentUpload() {
               </div>
             )}
 
-            {uploadResult && (
+            {uploadResult && !uploadResult.extractedData && (
               <div className="mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-lg space-y-2">
                 <p className="text-emerald-800 font-medium">Archivo subido exitosamente</p>
-                <p className="text-sm text-emerald-700">Nombre: {uploadResult.fileName}</p>
-                <p className="text-sm text-emerald-700 break-all">URL S3: {uploadResult.s3Url}</p>
                 <button
                   type="button"
                   onClick={() => { setStep('checklist'); setUploadResult(null) }}
@@ -200,82 +252,102 @@ export default function DocumentUpload() {
         <>
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
             <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-              <span className="font-medium text-slate-800">Resultado de extracción</span>
-              <span className="text-sm text-slate-600">
-                Archivo: {uploadResult?.fileName ?? '—'} · Confianza: —
+              <span className="font-medium text-slate-800">Datos extraídos: {selectedType?.label}</span>
+              <span className="text-xs text-slate-500 font-mono truncate max-w-xs">
+                {uploadResult?.documento?.nombre_archivo ?? uploadResult?.s3Url?.split('/').pop() ?? '—'}
               </span>
             </div>
+
             <div className="p-4 space-y-4">
-              <div className="flex items-center gap-3">
-                <span className={`px-2 py-1 rounded text-sm font-medium ${
-                  uploadResult?.status === 'validated'
-                    ? 'bg-emerald-100 text-emerald-800'
-                    : 'bg-amber-100 text-amber-800'
-                }`}>
-                  {uploadResult?.status === 'validated' ? 'Validado' : 'En revisión'}
-                </span>
-                <span className="text-sm text-slate-600">
-                  Tipo detectado: <strong>{selectedType?.label ?? '—'}</strong>
-                </span>
-              </div>
+
+              {/* ── Bank statement summary card ── */}
+              {(selectedType?.id === 'edos_cuenta_bancarios' || selectedType?.id === 'estado_cuenta_bancario') &&
+                uploadResult?.extractedData && (
+                <div className="grid grid-cols-3 gap-3 mb-2">
+                  <div className="bg-slate-50 rounded-lg p-3 border border-slate-100 text-center">
+                    <p className="text-xs text-slate-500 mb-1">Mes</p>
+                    <p className="text-lg font-bold text-slate-800">
+                      {uploadResult.extractedData.mes ?? '—'}
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      {uploadResult.extractedData.banco_detectado ?? ''}
+                    </p>
+                  </div>
+                  <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-100 text-center">
+                    <p className="text-xs text-emerald-600 mb-1">Total abonos</p>
+                    <p className="text-lg font-bold text-emerald-700">
+                      {uploadResult.extractedData.abonos != null
+                        ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(uploadResult.extractedData.abonos)
+                        : '—'}
+                    </p>
+                  </div>
+                  <div className="bg-red-50 rounded-lg p-3 border border-red-100 text-center">
+                    <p className="text-xs text-red-600 mb-1">Total retiros</p>
+                    <p className="text-lg font-bold text-red-700">
+                      {uploadResult.extractedData.retiros != null
+                        ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(uploadResult.extractedData.retiros)
+                        : '—'}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Extracted fields table ── */}
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-slate-500 border-b border-slate-100">
                     <th className="pb-2 font-medium">Campo</th>
                     <th className="pb-2 font-medium">Valor extraído</th>
-                    <th className="pb-2 font-medium">Fuente</th>
-                    <th className="pb-2 font-medium w-20">Estado</th>
+                    <th className="pb-2 font-medium w-20 text-right">Estado</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(uploadResult?.extractedFields || []).map((row, i) => (
                     <tr key={i} className="border-b border-slate-50">
-                      <td className="py-2 text-slate-800">{row.name}</td>
-                      <td className="py-2 font-mono text-slate-700">{row.value}</td>
-                      <td className="py-2 text-slate-500">{row.source}</td>
-                      <td className="py-2">
-                        {row.valid ? (
-                          <span className="text-emerald-600">✓</span>
-                        ) : (
-                          <span className="text-amber-600">Revisar</span>
-                        )}
+                      <td className="py-2 text-slate-600">{row.name}</td>
+                      <td className="py-2 font-mono text-slate-800">{row.value}</td>
+                      <td className="py-2 text-right">
+                        {row.valid
+                          ? <span className="text-emerald-600 font-medium">✓</span>
+                          : <span className="text-amber-500 text-xs">Revisar</span>
+                        }
                       </td>
                     </tr>
                   ))}
+                  {(!uploadResult?.extractedFields || uploadResult.extractedFields.length === 0) && (
+                    <tr>
+                      <td colSpan={3} className="py-4 text-center text-slate-400 text-sm">
+                        No se extrajeron campos de este documento.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
-              {uploadResult?.validationAlerts?.length > 0 ? (
+
+              {uploadResult?.documento?.textract_error && (
                 <div className="text-amber-700 text-sm bg-amber-50 p-3 rounded-lg">
-                  {uploadResult.validationAlerts.map((a, i) => <p key={i}>{a}</p>)}
+                  Advertencia: {uploadResult.documento.textract_error}
                 </div>
-              ) : (
-                <p className="text-sm text-slate-500">Sin alertas de validación. Los datos se usarán para el cálculo de KPIs.</p>
               )}
             </div>
-            <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+
+            <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
               <button
                 type="button"
-                onClick={() => setStep('checklist')}
-                className="px-4 py-2 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-100"
+                onClick={() => { setStep('upload'); setUploadResult(null) }}
+                className="text-sm text-slate-500 hover:text-slate-700"
               >
-                Cerrar
+                ← Subir otro
               </button>
               <button
                 type="button"
-                onClick={() => setStep('checklist')}
-                className="px-4 py-2 bg-pontifex-600 text-white rounded-lg font-medium hover:bg-pontifex-700"
+                onClick={() => { setStep('checklist'); setUploadResult(null) }}
+                className="px-4 py-2 bg-pontifex-600 text-white rounded-lg font-medium hover:bg-pontifex-700 text-sm"
               >
-                Confirmar y usar datos
+                Confirmar y continuar
               </button>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => { setStep('checklist'); setSelectedType(null) }}
-            className="text-sm text-slate-500 hover:text-slate-700"
-          >
-            ← Volver al listado de documentos
-          </button>
         </>
       )}
     </div>

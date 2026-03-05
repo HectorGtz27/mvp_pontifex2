@@ -2,8 +2,9 @@ const { PutObjectCommand } = require('@aws-sdk/client-s3')
 const { v4: uuidv4 } = require('uuid')
 const path = require('path')
 const { s3, S3_BUCKET } = require('../config/s3.cjs')
-const { analyzeDocumentFormsAsync, extractRawTextAsync, extractRawTextSync } = require('../services/textractService.cjs')
+const { analyzeDocumentFormsAsync, extractRawTextSync } = require('../services/textractService.cjs')
 const { extractBankStatementData } = require('../services/bedrockService.cjs')
+const { extractFirstPage } = require('../services/pdfService.cjs')
 const { createDocumento } = require('../services/documentoService.cjs')
 const { processDocumentoCampos } = require('../services/campoExtraidoService.cjs')
 
@@ -54,7 +55,8 @@ async function uploadFile(req, res) {
     // ── 2. Determine document type and solicitud from request ──
     const documentTypeId = req.body?.documentTypeId || null
     const solicitudId = req.body?.solicitudId || req.body?.clienteId || null
-    console.log(`[Upload] documentTypeId: ${documentTypeId}, solicitudId: ${solicitudId}`)
+    const cuentaBancariaId = req.body?.cuentaBancariaId || null
+    console.log(`[Upload] documentTypeId: ${documentTypeId}, solicitudId: ${solicitudId}, cuentaBancariaId: ${cuentaBancariaId}`)
 
     // ── 3. Run Textract FORMS for "Constancia de Situación Fiscal" ──
     // Usando método asíncrono para soportar PDFs multi-página
@@ -81,15 +83,20 @@ async function uploadFile(req, res) {
     } else if (documentTypeId === 'edos_cuenta_bancarios' || documentTypeId === 'estado_cuenta_bancario') {
       console.log('[Upload] 🏦 Documento es Estado de Cuenta Bancario, extrayendo texto con Textract + Claude...')
       try {
-        // Step 1: Textract extracts plain text (async to support multi-page PDFs)
         const banco = req.body?.banco || null
-        const rawText = await extractRawTextAsync(S3_BUCKET, key)
+
+        // Step 1: Extraer sólo la página 1 en memoria (el PDF completo ya está en S3)
+        const { buffer: page1Buffer, pageCount, wasSliced } = await extractFirstPage(file.buffer, file.mimetype)
+        console.log(`[Upload] 📄 PDF: ${pageCount} págs → usando página 1 en modo síncrono (wasSliced: ${wasSliced})`)
+
+        // Step 2: Textract síncrono sobre la página 1 (mucho más rápido que async)
+        const rawText = await extractRawTextSync(page1Buffer, file.mimetype)
 
         if (!rawText || rawText.trim().length < 50) {
           throw new Error('Textract no pudo extraer texto suficiente del documento')
         }
 
-        // Step 2: Claude via Bedrock identifies the totals regardless of bank format
+        // Step 3: Claude via Bedrock extrae los 6 campos requeridos
         const bedrockResult = await extractBankStatementData(rawText, banco)
 
         extractedData = {
@@ -97,8 +104,11 @@ async function uploadFile(req, res) {
           mes: bedrockResult.mes,
           abonos: bedrockResult.abonos,
           retiros: bedrockResult.retiros,
+          saldo_promedio: bedrockResult.saldo_promedio,
+          divisa: bedrockResult.divisa,
           banco_detectado: bedrockResult.banco_detectado,
           confianza: bedrockResult.confianza,
+          paginas_totales: pageCount,
           ...(bedrockResult.parseError && { error_parseo: bedrockResult.parseError }),
         }
         console.log('[Upload] ✅ Estado de cuenta procesado:', extractedData)
@@ -116,6 +126,7 @@ async function uploadFile(req, res) {
       documento = await createDocumento({
         solicitudId,
         documentType: documentTypeId,
+        cuentaBancariaId,
         fileName: file.originalname,
         s3Url,
         s3Key: key,
@@ -160,4 +171,141 @@ async function uploadFile(req, res) {
   }
 }
 
-module.exports = { uploadFile }
+// ────────────────────────────────────────────────────────────────
+// Bulk Upload — hasta 12 archivos a la vez para una cuenta bancaria
+// ────────────────────────────────────────────────────────────────
+
+/**
+ * Procesa un lote de archivos en paralelo con concurrencia limitada.
+ * @param {Array} items - Array de inputs
+ * @param {Function} fn - Async function por item
+ * @param {number} concurrency - Máximo de jobs paralelos
+ */
+async function pLimit(items, fn, concurrency = 4) {
+  const results = []
+  let idx = 0
+  async function worker() {
+    while (idx < items.length) {
+      const i = idx++
+      results[i] = await fn(items[i], i)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker))
+  return results
+}
+
+/**
+ * Procesa un solo archivo de estado de cuenta (extrae página 1 → Textract → Bedrock).
+ * Retorna el documento guardado + datos extraídos.
+ */
+async function processBankStatementFile(file, { solicitudId, cuentaBancariaId, s3Key, s3Url }) {
+  let extractedData = null
+  let textractError = null
+
+  try {
+    const { buffer: page1Buffer, pageCount, wasSliced } = await extractFirstPage(file.buffer, file.mimetype)
+    console.log(`[Bulk] 📄 ${file.originalname}: ${pageCount} págs → página 1 (wasSliced: ${wasSliced})`)
+
+    const rawText = await extractRawTextSync(page1Buffer, file.mimetype)
+    if (!rawText || rawText.trim().length < 50) {
+      throw new Error('Textract no pudo extraer texto suficiente')
+    }
+
+    const bedrockResult = await extractBankStatementData(rawText, null)
+
+    extractedData = {
+      tipo: 'estado_cuenta_bancario',
+      mes: bedrockResult.mes,
+      abonos: bedrockResult.abonos,
+      retiros: bedrockResult.retiros,
+      saldo_promedio: bedrockResult.saldo_promedio,
+      divisa: bedrockResult.divisa,
+      banco_detectado: bedrockResult.banco_detectado,
+      confianza: bedrockResult.confianza,
+      paginas_totales: pageCount,
+      ...(bedrockResult.parseError && { error_parseo: bedrockResult.parseError }),
+    }
+  } catch (err) {
+    console.error(`[Bulk] ❌ Error en ${file.originalname}:`, err.message)
+    textractError = err.message
+  }
+
+  const documento = await createDocumento({
+    solicitudId,
+    documentType: 'edos_cuenta_bancarios',
+    cuentaBancariaId,
+    fileName: file.originalname,
+    s3Url,
+    s3Key,
+    mimeType: file.mimetype,
+    fileSize: file.size,
+    extractedData,
+    textractError,
+  })
+
+  return {
+    fileName: file.originalname,
+    success: !textractError,
+    error: textractError || null,
+    documento,
+    extractedData,
+  }
+}
+
+async function uploadBulk(req, res) {
+  try {
+    const files = req.files
+    if (!files || files.length === 0) {
+      return res.status(400).json({ success: false, error: 'No se enviaron archivos.' })
+    }
+    if (files.length > 12) {
+      return res.status(400).json({ success: false, error: 'Máximo 12 archivos por lote.' })
+    }
+
+    const cuentaBancariaId = req.body?.cuentaBancariaId || null
+    const solicitudId = req.body?.solicitudId || null
+
+    if (!cuentaBancariaId || !solicitudId) {
+      return res.status(400).json({ success: false, error: 'cuentaBancariaId y solicitudId son requeridos.' })
+    }
+
+    console.log(`[Bulk] 📦 Procesando ${files.length} archivos para cuenta ${cuentaBancariaId}`)
+
+    // 1. Subir todos los archivos a S3 primero (rápido, en paralelo)
+    const s3Uploads = await pLimit(files, async (file) => {
+      const ext = path.extname(file.originalname).replace('.', '').toLowerCase()
+      const key = `uploads/${uuidv4()}.${ext}`
+      await s3.send(new PutObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: key,
+        Body: file.buffer,
+        ContentType: file.mimetype,
+      }))
+      const s3Url = `https://${S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`
+      return { file, key, s3Url }
+    }, 6)
+
+    // 2. Procesar Textract + Bedrock en paralelo (máx 4 concurrentes para respetar límites AWS)
+    const results = await pLimit(s3Uploads, async ({ file, key, s3Url }) => {
+      return processBankStatementFile(file, { solicitudId, cuentaBancariaId, s3Key: key, s3Url })
+    }, 4)
+
+    const successful = results.filter(r => r.success).length
+    const failed = results.filter(r => !r.success).length
+
+    console.log(`[Bulk] ✅ Completado: ${successful} OK, ${failed} errores`)
+
+    return res.json({
+      success: true,
+      total: files.length,
+      successful,
+      failed,
+      results,
+    })
+  } catch (err) {
+    console.error('[Bulk] Error general:', err)
+    return res.status(500).json({ success: false, error: err.message })
+  }
+}
+
+module.exports = { uploadFile, uploadBulk }

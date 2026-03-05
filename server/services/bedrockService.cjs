@@ -21,9 +21,12 @@ function createClient() {
 
 /**
  * Analyzes raw text from a bank statement and extracts:
- *   - mes:     statement month as "YYYY-MM"
- *   - abonos:  total deposits/credits for the month (number)
- *   - retiros: total withdrawals/debits for the month (number)
+ *   - mes:             statement month as "YYYY-MM"
+ *   - abonos:          total deposits/credits for the month (number)
+ *   - retiros:         total withdrawals/debits for the month (number)
+ *   - saldo_promedio:  average monthly balance (number)
+ *   - divisa:          currency "MXN" or "USD"
+ *   - banco_detectado: bank name (string)
  *
  * This works regardless of the bank (BBVA, Santander, Banamex,
  * Banorte, HSBC, Scotiabank, etc.) because Claude identifies the
@@ -31,7 +34,7 @@ function createClient() {
  *
  * @param {string} rawText - Plain text extracted by Textract from the PDF/image
  * @param {string} [banco]  - Optional bank name hint (e.g. "BBVA"), helps accuracy
- * @returns {Promise<{ mes: string|null, abonos: number|null, retiros: number|null, rawResponse: string }>}
+ * @returns {Promise<{ mes, abonos, retiros, saldo_promedio, divisa, banco_detectado, confianza, rawResponse }>}
  */
 async function extractBankStatementData(rawText, banco = null) {
   console.log(`[Bedrock] Analizando estado de cuenta${banco ? ` (${banco})` : ''}...`)
@@ -41,20 +44,24 @@ async function extractBankStatementData(rawText, banco = null) {
     ? `El documento fue emitido por ${banco}.`
     : 'El banco emisor es desconocido; determínalo del texto si es posible.'
 
-  const prompt = `Eres un experto en análisis de estados de cuenta bancarios mexicanos.
+  const prompt = `Eres un experto en análisis de estados de cuenta bancarios mexicanos e internacionales.
 ${bancoHint}
 
-Analiza el siguiente texto extraído de un estado de cuenta bancario y extrae EXACTAMENTE:
+Analiza el siguiente texto extraído de la PRIMERA PÁGINA de un estado de cuenta bancario y extrae EXACTAMENTE:
 1. El mes y año del estado de cuenta (formato YYYY-MM)
 2. El total de ABONOS o DEPÓSITOS del mes (suma de todos los ingresos/créditos)
 3. El total de RETIROS o CARGOS del mes (suma de todos los egresos/débitos)
+4. El SALDO PROMEDIO mensual (puede llamarse "saldo promedio", "saldo medio", "average balance", "saldo promedio mensual")
+5. La DIVISA de la cuenta ("MXN" para pesos mexicanos, "USD" para dólares, etc.)
+6. El nombre del BANCO emisor
 
 INSTRUCCIONES IMPORTANTES:
 - Los bancos usan vocabulario diferente: "abonos/cargos", "depósitos/retiros", "créditos/débitos"
 - Busca los TOTALES del periodo, no transacciones individuales
 - Si el documento tiene múltiples meses, usa el mes principal del estado de cuenta
-- Los montos son en pesos mexicanos (MXN)
-- Ignora comisiones, intereses y saldo si no son parte de los totales solicitados
+- Para la divisa: busca símbolos ($, USD, MXN), o el tipo de cuenta ("cuenta en dólares" = USD)
+- Si ves montos con "USD" o "Dlls" o "Dólares" → divisa es "USD"
+- Si ves montos con "MXN" o "Pesos" o sólo "$" en banco mexicano → divisa es "MXN"
 - Si no puedes determinar un valor con certeza, usa null
 
 Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional, sin markdown:
@@ -62,6 +69,8 @@ Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional, sin markdo
   "mes": "YYYY-MM or null",
   "abonos": number or null,
   "retiros": number or null,
+  "saldo_promedio": number or null,
+  "divisa": "MXN" or "USD" or null,
   "banco_detectado": "string or null",
   "confianza": "alta|media|baja"
 }
@@ -105,8 +114,8 @@ ${rawText.substring(0, 15000)}
     return {
       mes: null,
       abonos: null,
-      retiros: null,
-      banco_detectado: null,
+      retiros: null,      saldo_promedio: null,
+      divisa: null,      banco_detectado: null,
       confianza: null,
       rawResponse,
       parseError: `No se pudo parsear la respuesta de Claude: ${parseErr.message}`,
@@ -118,6 +127,8 @@ ${rawText.substring(0, 15000)}
     mes:             parsed.mes !== 'null' ? (parsed.mes || null) : null,
     abonos:          typeof parsed.abonos === 'number' ? parsed.abonos : null,
     retiros:         typeof parsed.retiros === 'number' ? parsed.retiros : null,
+    saldo_promedio:  typeof parsed.saldo_promedio === 'number' ? parsed.saldo_promedio : null,
+    divisa:          parsed.divisa || null,
     banco_detectado: parsed.banco_detectado || null,
     confianza:       parsed.confianza || null,
     rawResponse,
@@ -127,6 +138,8 @@ ${rawText.substring(0, 15000)}
     mes: result.mes,
     abonos: result.abonos,
     retiros: result.retiros,
+    saldo_promedio: result.saldo_promedio,
+    divisa: result.divisa,
     banco: result.banco_detectado,
     confianza: result.confianza,
   })

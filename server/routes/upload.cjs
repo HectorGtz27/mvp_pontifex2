@@ -1,6 +1,6 @@
 const express = require('express')
 const multer = require('multer')
-const { uploadFile } = require('../controllers/uploadController.cjs')
+const { uploadFile, uploadBulk } = require('../controllers/uploadController.cjs')
 
 const router = express.Router()
 
@@ -24,6 +24,13 @@ router.post('/', upload.single('file'), (req, res, next) => {
   console.log(`[Multer] req.body:`, JSON.stringify(req.body, null, 2))
   console.log(`[Multer] req.body.documentTypeId:`, req.body?.documentTypeId)
   uploadFile(req, res).catch(next)
+})
+
+// POST /api/upload/bulk — hasta 12 archivos para una cuenta bancaria
+router.post('/bulk', upload.array('files', 12), (req, res, next) => {
+  console.log(`\n[Multer/Bulk] ▶ ${req.files?.length || 0} archivos recibidos`)
+  console.log(`[Multer/Bulk] body:`, JSON.stringify(req.body))
+  uploadBulk(req, res).catch(next)
 })
 
 // Handle multer errors gracefully
