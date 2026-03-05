@@ -2,15 +2,23 @@ import { Routes, Route, Link, Navigate } from 'react-router-dom'
 import FullFlow from './pages/FullFlow'
 import Landing from './pages/Landing'
 import AdminSolicitudes from './pages/AdminSolicitudes'
+import PontifexLogo from '../public/pontifex_logo.png'
 
 function App() {
   return (
     <div className="min-h-screen flex flex-col">
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-md bg-pontifex-600 flex items-center justify-center text-white font-semibold text-sm">P</div>
-            <span className="font-semibold text-slate-800">Pontifex</span>
+          <Link
+            to="/"
+            className="flex items-center gap-2 transition-opacity hover:opacity-80 focus:opacity-80 focus:outline-none"
+            aria-label="Ir al inicio"
+          >
+            <img
+              src={PontifexLogo}
+              alt="Pontifex"
+              className="h-12 w-auto"
+            />
           </Link>
         </div>
       </header>
