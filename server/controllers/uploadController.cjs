@@ -5,6 +5,7 @@ const { s3, S3_BUCKET } = require('../config/s3.cjs')
 const { analyzeDocumentFormsAsync, extractRawTextAsync, extractRawTextSync } = require('../services/textractService.cjs')
 const { extractBankStatementData } = require('../services/bedrockService.cjs')
 const { createDocumento } = require('../services/documentoService.cjs')
+const { processDocumentoCampos } = require('../services/campoExtraidoService.cjs')
 
 const ALLOWED_MIME = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png']
 const MAX_SIZE = 10 * 1024 * 1024 // 10 MB
@@ -133,10 +134,22 @@ async function uploadFile(req, res) {
       })
     }
 
+    // ── 5. Parse extracted_data → campos_extraidos ──
+    let camposInsertados = 0
+    if (documento && extractedData && !textractError) {
+      try {
+        camposInsertados = await processDocumentoCampos(documento)
+      } catch (campoErr) {
+        // No-fatal: el documento ya está guardado, solo logueamos el error
+        console.error('[Upload] Error al procesar campos extraídos:', campoErr.message)
+      }
+    }
+
     return res.json({
       success: true,
       documento,
       extractedData,
+      camposInsertados,
     })
   } catch (err) {
     console.error('Error uploading to S3:', err)
