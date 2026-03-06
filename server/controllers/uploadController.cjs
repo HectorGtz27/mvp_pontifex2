@@ -3,7 +3,7 @@ const { v4: uuidv4 } = require('uuid')
 const path = require('path')
 const { s3, S3_BUCKET } = require('../config/s3.cjs')
 const { analyzeDocumentFormsAsync, extractRawTextSync } = require('../services/textractService.cjs')
-const { extractBankStatementData } = require('../services/bedrockService.cjs')
+const { extractBankStatementData, extractCSFData } = require('../services/bedrockService.cjs')
 const { extractFirstPage } = require('../services/pdfService.cjs')
 const { createDocumento } = require('../services/documentoService.cjs')
 const { processDocumentoCampos } = require('../services/campoExtraidoService.cjs')
@@ -58,27 +58,40 @@ async function uploadFile(req, res) {
     const cuentaBancariaId = req.body?.cuentaBancariaId || null
     console.log(`[Upload] documentTypeId: ${documentTypeId}, solicitudId: ${solicitudId}, cuentaBancariaId: ${cuentaBancariaId}`)
 
-    // ── 3. Run Textract FORMS for "Constancia de Situación Fiscal" ──
-    // Usando método asíncrono para soportar PDFs multi-página
+    // ── 3. Extract document data using DetectDocumentText + Claude ──
+    // New approach: 14x cheaper than AnalyzeDocument FORMS
+    // Cost comparison:
+    //   - Old (FORMS):     ~$0.05 USD per page
+    //   - New (Text+LLM):  ~$0.0035 USD per page
     let extractedData = null
     let textractError = null
     if (documentTypeId === 'constancia_situacion_fiscal') {
-      console.log('[Upload] 🔍 Documento es Constancia de Situación Fiscal, llamando a Textract ASYNC...')
+      console.log('[Upload] 📄 Documento es Constancia de Situación Fiscal, extrayendo con Textract + Claude...')
       try {
-        // El archivo ya está en S3, así que usamos el método asíncrono
-        // que soporta documentos multi-página
-        extractedData = await analyzeDocumentFormsAsync(S3_BUCKET, key)
-        console.log('[Upload] ✅ Textract completado exitosamente')
-      } catch (textractErr) {
-        console.error('❌ [Upload] Error calling Textract:')
-        console.error('   Tipo:', textractErr.constructor.name)
-        console.error('   Mensaje:', textractErr.message)
-        console.error('   Código:', textractErr.code)
-        console.error('   Stack:', textractErr.stack)
-        if (textractErr.$metadata) {
-          console.error('   Metadata:', JSON.stringify(textractErr.$metadata, null, 2))
+        // Step 1: Extract first page only (CSF key data is on page 1)
+        const { buffer: page1Buffer, pageCount, wasSliced } = await extractFirstPage(file.buffer, file.mimetype)
+        console.log(`[Upload] 📄 PDF: ${pageCount} págs → usando página 1 en modo síncrono (wasSliced: ${wasSliced})`)
+
+        // Step 2: DetectDocumentText (cheap, fast)
+        const rawText = await extractRawTextSync(page1Buffer, file.mimetype)
+
+        if (!rawText || rawText.trim().length < 50) {
+          throw new Error('Textract no pudo extraer texto suficiente del documento')
         }
-        textractError = `Error de Textract: ${textractErr.message || textractErr.code || 'Error desconocido'}`
+
+        // Step 3: Claude via Bedrock extracts structured CSF fields
+        const bedrockResult = await extractCSFData(rawText)
+
+        extractedData = {
+          tipo: 'constancia_situacion_fiscal',
+          ...bedrockResult,
+          paginas_totales: pageCount,
+          ...(bedrockResult.parseError && { error_parseo: bedrockResult.parseError }),
+        }
+        console.log('[Upload] ✅ CSF procesada exitosamente')
+      } catch (err) {
+        console.error('❌ [Upload] Error procesando CSF:', err.message)
+        textractError = `Error procesando CSF: ${err.message}`
       }
     } else if (documentTypeId === 'edos_cuenta_bancarios' || documentTypeId === 'estado_cuenta_bancario') {
       console.log('[Upload] 🏦 Documento es Estado de Cuenta Bancario, extrayendo texto con Textract + Claude...')

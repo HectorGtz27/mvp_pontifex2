@@ -147,4 +147,179 @@ ${rawText.substring(0, 15000)}
   return result
 }
 
-module.exports = { extractBankStatementData }
+/**
+ * Extracts structured data from a Constancia de Situación Fiscal (CSF).
+ * This is a cost-effective alternative to Textract's FORMS analysis:
+ *   - Textract FORMS:          ~$0.05 USD per page
+ *   - DetectDocumentText:      ~$0.0015 USD per page
+ *   - Claude Haiku 4.5:        ~$0.002 USD per extraction
+ *   - Total savings:           ~14x cheaper (~$0.0035 vs $0.05)
+ *
+ * The CSF can be for either:
+ *   - Persona Moral (company): Has "Denominación/Razón Social"
+ *   - Persona Física (individual): Has "Nombre(s)", "Primer Apellido", "Segundo Apellido"
+ *
+ * @param {string} rawText - Plain text extracted by Textract from the CSF PDF
+ * @returns {Promise<Object>} Empresa-compatible object with CSF fields
+ */
+async function extractCSFData(rawText) {
+  console.log(`[Bedrock/CSF] Analizando Constancia de Situación Fiscal...`)
+  console.log(`[Bedrock/CSF] Texto recibido: ${rawText.length} caracteres`)
+
+  const prompt = `Eres un experto en análisis de documentos fiscales mexicanos del SAT.
+
+Analiza el siguiente texto extraído de una Constancia de Situación Fiscal (CSF) emitida por el SAT y extrae EXACTAMENTE los siguientes campos:
+
+**IDENTIFICACIÓN:**
+- RFC (13 caracteres para personas morales, 13 para físicas con actividad empresarial)
+- CURP (18 caracteres, solo para personas físicas)
+- Denominación/Razón Social (para persona moral) O Nombre completo (para persona física)
+- Nombre Comercial (si existe)
+
+**DOMICILIO FISCAL:**
+- Tipo de Vialidad (ej: "CALLE", "AVENIDA", "BOULEVARD")
+- Nombre de Vialidad (nombre de la calle)
+- Número Exterior
+- Número Interior (si existe)
+- Nombre de la Colonia
+- Nombre de la Localidad
+- Nombre del Municipio o Demarcación Territorial
+- Nombre de la Entidad Federativa (estado)
+- Entre Calle (si existe)
+
+**INFORMACIÓN ADICIONAL:**
+- Fecha de Inicio de Operaciones (formato DD/MM/AAAA)
+- Estatus en el Padrón (ej: "ACTIVO")
+- Lugar y Fecha de Emisión
+- IDCIF (identificador del documento)
+
+INSTRUCCIONES IMPORTANTES:
+- Si es persona MORAL: usa "Denominación/Razón Social" para razon_social
+- Si es persona FÍSICA: combina "Nombre(s)" + "Primer Apellido" + "Segundo Apellido" para razon_social
+- Para domicilio_fiscal: concatena en orden: Localidad, Estado, Colonia, Tipo Vialidad, Vialidad, Número Exterior (separados por comas)
+- Para ciudad: usa "Nombre de la Localidad" o "Nombre del Municipio"
+- Los campos pueden tener variaciones de etiquetas (ej: "Denominación o Razón Social", "Denominación / Razón Social")
+- Si un campo no existe o no puedes determinarlo con certeza, usa null
+
+Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional, sin markdown:
+{
+  "razon_social": "string or null",
+  "nombre_comercial": "string or null",
+  "rfc": "string or null",
+  "domicilio_fiscal": "string or null",
+  "ciudad": "string or null",
+  "estado": "string or null",
+  "curp": "string or null",
+  "estatus_padron": "string or null",
+  "fecha_inicio_operaciones": "string or null",
+  "lugar_fecha_emision": "string or null",
+  "id_cif": "string or null",
+  "entre_calle": "string or null",
+  "tipo_vialidad": "string or null",
+  "vialidad": "string or null",
+  "numero_exterior": "string or null",
+  "numero_interior": "string or null",
+  "colonia": "string or null",
+  "localidad": "string or null",
+  "municipio": "string or null",
+  "confianza": "alta|media|baja"
+}
+
+TEXTO DE LA CONSTANCIA DE SITUACIÓN FISCAL:
+---
+${rawText.substring(0, 15000)}
+---`
+
+  const client = createClient()
+
+  const command = new ConverseCommand({
+    modelId: MODEL_ID,
+    messages: [
+      {
+        role: 'user',
+        content: [{ text: prompt }],
+      },
+    ],
+    inferenceConfig: {
+      maxTokens: 1024,
+      temperature: 0,  // deterministic extraction
+    },
+  })
+
+  console.log('[Bedrock/CSF] Enviando a Claude via Converse API...')
+  const response = await client.send(command)
+
+  const rawResponse = response.output?.message?.content?.[0]?.text || ''
+  console.log(`[Bedrock/CSF] Respuesta raw: ${rawResponse.substring(0, 500)}...`)
+
+  // Parse the JSON response
+  let parsed
+  try {
+    const cleaned = rawResponse.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
+    parsed = JSON.parse(cleaned)
+  } catch (parseErr) {
+    console.error('[Bedrock/CSF] Error parseando JSON de Claude:', parseErr.message)
+    console.error('[Bedrock/CSF] Respuesta recibida:', rawResponse)
+    return {
+      razon_social: null,
+      nombre_comercial: null,
+      rfc: null,
+      domicilio_fiscal: null,
+      ciudad: null,
+      estado: null,
+      _extra: {
+        curp: null,
+        estatus_padron: null,
+        fecha_inicio_operaciones: null,
+        lugar_fecha_emision: null,
+        id_cif: null,
+        entre_calle: null,
+      },
+      parseError: `No se pudo parsear la respuesta de Claude: ${parseErr.message}`,
+      rawResponse,
+    }
+  }
+
+  // Build empresa-compatible object with same structure as parseFormsResponse
+  const result = {
+    razon_social:       parsed.razon_social || null,
+    nombre_comercial:   parsed.nombre_comercial || null,
+    rfc:                parsed.rfc || null,
+    domicilio_fiscal:   parsed.domicilio_fiscal || null,
+    ciudad:             parsed.ciudad || parsed.localidad || parsed.municipio || null,
+    estado:             parsed.estado || null,
+    telefono:           null,  // CSF doesn't include phone
+    correo_electronico: null,  // CSF doesn't include email
+    pagina_web:         null,  // CSF doesn't include website
+    numero_empleados:   null,  // CSF doesn't include employees
+    // Extra CSF fields (not in empresa table but useful for debugging/audit)
+    _extra: {
+      curp:                     parsed.curp || null,
+      estatus_padron:           parsed.estatus_padron || null,
+      fecha_inicio_operaciones: parsed.fecha_inicio_operaciones || null,
+      lugar_fecha_emision:      parsed.lugar_fecha_emision || null,
+      id_cif:                   parsed.id_cif || null,
+      entre_calle:              parsed.entre_calle || null,
+      tipo_vialidad:            parsed.tipo_vialidad || null,
+      vialidad:                 parsed.vialidad || null,
+      numero_exterior:          parsed.numero_exterior || null,
+      numero_interior:          parsed.numero_interior || null,
+      colonia:                  parsed.colonia || null,
+      localidad:                parsed.localidad || null,
+      municipio:                parsed.municipio || null,
+      confianza:                parsed.confianza || null,
+    },
+    rawResponse,
+  }
+
+  console.log(`[Bedrock/CSF] ✅ Extracción exitosa:`, {
+    razon_social: result.razon_social,
+    rfc: result.rfc,
+    estado: result.estado,
+    confianza: result._extra.confianza,
+  })
+
+  return result
+}
+
+module.exports = { extractBankStatementData, extractCSFData }
