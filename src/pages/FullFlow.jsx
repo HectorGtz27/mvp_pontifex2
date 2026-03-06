@@ -858,6 +858,14 @@ export default function FullFlow() {
                       
                       // Load documents with extractedData to populate Excel
                       let extractedFields = []
+                      // Also ensure cuentasBancarias are loaded (needed for Flujos sheet)
+                      let cuentasData = cuentasBancarias
+                      if (solicitudId && cuentasData.length === 0) {
+                        try {
+                          cuentasData = await fetchCuentasBancarias(solicitudId)
+                          setCuentasBancarias(cuentasData)
+                        } catch (_) {}
+                      }
                       if (solicitudId) {
                         try {
                           const res = await fetch(`/api/solicitudes/${solicitudId}/documents`)
@@ -887,11 +895,28 @@ export default function FullFlow() {
                       // Use extracted fields if available, otherwise use spreadsheetData
                       const dataToUse = extractedFields.length > 0 ? extractedFields : spreadsheetData
                       
+                      // Derive bank statements from DB data (cuentasBancarias) so
+                      // it reflects all uploaded statements, not just the current session
+                      const bankStatementsForExcel = cuentasData.length > 0
+                        ? cuentasData.flatMap(cuenta =>
+                            cuenta.documentos
+                              .filter(d => d.abonos != null || d.retiros != null || d.saldoPromedio != null)
+                              .map(d => ({
+                                mes: d.periodo,
+                                abonos: d.abonos,
+                                retiros: d.retiros,
+                                saldo_promedio: d.saldoPromedio,
+                                divisa: d.divisa || cuenta.divisa,
+                                banco_detectado: d.banco || cuenta.banco,
+                              }))
+                          )
+                        : bankStatements
+
                       await downloadMasterClientXlsx(
                         formData,
                         dataToUse,
                         `master_client_pontifex_${baseName}.xlsx`,
-                        bankStatements
+                        bankStatementsForExcel
                       )
                     }}
                     className="px-3 py-2 rounded-lg border border-pontifex-200 bg-pontifex-50 text-pontifex-700 text-sm font-medium hover:bg-pontifex-100"

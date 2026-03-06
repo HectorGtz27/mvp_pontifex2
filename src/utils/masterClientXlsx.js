@@ -116,25 +116,81 @@ export async function buildMasterClientWorkbook(formData, extracted, bankStateme
   worksheet.getCell('P23').value = situacionBuroCredito
 
   // 5. Fill "Flujos" sheet with bank statement data
-  // Row 6 = Enero, Row 7 = Febrero, ..., Row 17 = Diciembre
-  // D = Ingresos (abonos), E = Egresos (retiros)
+  //
+  // Template layout (same columns for MXN and USD):
+  //   Bank 1 → D (Ingresos), E (Egresos), F (Saldos Prom)  — name header at D4 / D22
+  //   Bank 2 → H (Ingresos), I (Egresos), J (Saldos Prom)  — name header at H4 / H22
+  //   Bank 3 → L (Ingresos), M (Egresos), N (Saldos Prom)  — name header at L4 / L22
+  //
+  // MXN section: name row=4, data rows 6-17 (Enero=6 … Diciembre=17)
+  // USD section: name row=22, data rows 24-35 (Enero=24 … Diciembre=35)
   if (bankStatements && bankStatements.length > 0) {
     const flujoSheet = workbook.getWorksheet('Flujos')
     if (flujoSheet) {
-      bankStatements.forEach((stmt) => {
-        const monthNum = mesToMonthNumber(stmt.mes)
-        if (!monthNum) {
-          console.warn(`[Excel] No se pudo determinar el mes de: ${stmt.mes}`)
-          return
+      const BANK_COLS = [
+        { nameCol: 'D', ingr: 'D', egr: 'E', saldo: 'F' },
+        { nameCol: 'H', ingr: 'H', egr: 'I', saldo: 'J' },
+        { nameCol: 'L', ingr: 'L', egr: 'M', saldo: 'N' },
+      ]
+
+      // Group statements by bank name
+      const groupByBank = (stmts) => {
+        const groups = {}
+        stmts.forEach((s) => {
+          const key = (s.banco_detectado || 'Banco').trim()
+          if (!groups[key]) groups[key] = []
+          groups[key].push(s)
+        })
+        return groups
+      }
+
+      // Fill one section (MXN or USD)
+      const fillSection = (stmts, nameRow, dataStartRow) => {
+        if (!stmts.length) return
+        const groups = groupByBank(stmts)
+        const banks = Object.keys(groups)
+
+        // Build year map: monthNum → year (from statement mes "YYYY-MM")
+        const yearByMonth = {}
+        stmts.forEach((s) => {
+          const m = mesToMonthNumber(s.mes)
+          const yearMatch = s.mes && s.mes.match(/(\d{4})/)
+          if (m && yearMatch) yearByMonth[m] = parseInt(yearMatch[1], 10)
+        })
+        // Fill B column (year) for data rows
+        for (let mo = 1; mo <= 12; mo++) {
+          if (yearByMonth[mo]) {
+            flujoSheet.getCell(`B${dataStartRow - 1 + mo}`).value = yearByMonth[mo]
+          }
         }
-        const row = 5 + monthNum // month 1 → row 6, month 12 → row 17
-        if (stmt.abonos != null) {
-          flujoSheet.getCell(`D${row}`).value = Number(stmt.abonos)
-        }
-        if (stmt.retiros != null) {
-          flujoSheet.getCell(`E${row}`).value = Number(stmt.retiros)
-        }
-      })
+
+        banks.forEach((banco, idx) => {
+          if (idx >= BANK_COLS.length) return // template supports max 3 banks
+          const cols = BANK_COLS[idx]
+
+          // Write bank name in merged header cell (D4/H4/L4 for MXN; D22/H22/L22 for USD)
+          flujoSheet.getCell(`${cols.nameCol}${nameRow}`).value = banco
+
+          // Write per-month figures
+          groups[banco].forEach((stmt) => {
+            const monthNum = mesToMonthNumber(stmt.mes)
+            if (!monthNum) {
+              console.warn('[Excel] No se pudo determinar el mes de:', stmt.mes)
+              return
+            }
+            const row = dataStartRow - 1 + monthNum // month 1 → dataStartRow
+            if (stmt.abonos != null) flujoSheet.getCell(`${cols.ingr}${row}`).value = Number(stmt.abonos)
+            if (stmt.retiros != null) flujoSheet.getCell(`${cols.egr}${row}`).value = Number(stmt.retiros)
+            if (stmt.saldo_promedio != null) flujoSheet.getCell(`${cols.saldo}${row}`).value = Number(stmt.saldo_promedio)
+          })
+        })
+      }
+
+      const mxnStmts = bankStatements.filter((s) => !s.divisa || s.divisa === 'MXN')
+      const usdStmts = bankStatements.filter((s) => s.divisa === 'USD')
+
+      fillSection(mxnStmts, 4, 6)   // MXN: header at row 4, data rows 6-17
+      fillSection(usdStmts, 22, 24)  // USD: header at row 22, data rows 24-35
     } else {
       console.warn('[Excel] Hoja "Flujos" no encontrada en la plantilla — se omitieron los estados de cuenta')
     }
