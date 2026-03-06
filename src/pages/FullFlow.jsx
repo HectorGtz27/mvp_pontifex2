@@ -103,7 +103,6 @@ export default function FullFlow() {
   // ── Cuentas Bancarias (est. de cuenta multi-archivo) ──
   const [cuentasBancarias, setCuentasBancarias] = useState([])
   const [bsNewBanco, setBsNewBanco] = useState('')
-  const [bsNewDivisa, setBsNewDivisa] = useState('MXN')
   const [bsAddingCuenta, setBsAddingCuenta] = useState(false)
   const [bsBulkState, setBsBulkState] = useState({}) // { [cuentaId]: { uploading, progress:{done,total}, results:[] } }
   const [recommendationData, setRecommendationData] = useState(null)
@@ -522,10 +521,9 @@ export default function FullFlow() {
     setBsAddingCuenta(true)
     try {
       const banco = bsNewBanco === 'Otro' ? prompt('Nombre del banco:') || 'Otro' : bsNewBanco
-      const nueva = await createCuentaBancaria({ solicitudId, banco, divisa: bsNewDivisa })
+      const nueva = await createCuentaBancaria({ solicitudId, banco })
       setCuentasBancarias(prev => [...prev, nueva])
       setBsNewBanco('')
-      setBsNewDivisa('MXN')
       showToast.created('Cuenta bancaria')
     } catch (e) {
       showToast.error(e.message)
@@ -547,6 +545,13 @@ export default function FullFlow() {
 
   const handleBulkUpload = async (cuentaId, files) => {
     if (!files || files.length === 0) return
+    
+    // Validar máximo 24 archivos
+    if (files.length > 24) {
+      showToast.error(`Máximo 24 archivos por lote. Seleccionaste ${files.length}. Por favor divide en múltiples lotes.`)
+      return
+    }
+    
     setBsBulkState(prev => ({
       ...prev,
       [cuentaId]: { uploading: true, progress: { done: 0, total: files.length }, results: [] }
@@ -1011,7 +1016,7 @@ export default function FullFlow() {
 
                 {/* Add new account */}
                 <div className="bg-white rounded-xl border border-slate-200 p-4">
-                  <p className="text-sm font-semibold text-slate-700 mb-3">Declarar nueva cuenta</p>
+                  <p className="text-sm font-semibold text-slate-700 mb-3">Declarar nueva cuenta bancaria</p>
                   <div className="flex flex-wrap gap-2 items-center">
                     <select
                       value={bsNewBanco}
@@ -1021,20 +1026,6 @@ export default function FullFlow() {
                       <option value="">Seleccionar banco…</option>
                       {BANCOS_MX.map(b => <option key={b} value={b}>{b}</option>)}
                     </select>
-                    <div className="flex rounded-lg border border-slate-200 overflow-hidden text-sm font-medium">
-                      {['MXN', 'USD'].map(d => (
-                        <button
-                          key={d}
-                          type="button"
-                          onClick={() => setBsNewDivisa(d)}
-                          className={`px-4 py-2 transition-colors ${
-                            bsNewDivisa === d
-                              ? 'bg-pontifex-600 text-white'
-                              : 'bg-white text-slate-600 hover:bg-slate-50'
-                          }`}
-                        >{d}</button>
-                      ))}
-                    </div>
                     <button
                       type="button"
                       onClick={handleAddCuenta}
@@ -1044,6 +1035,9 @@ export default function FullFlow() {
                       {bsAddingCuenta ? 'Agregando…' : '+ Agregar cuenta'}
                     </button>
                   </div>
+                  <p className="text-xs text-slate-500 mt-2">
+                    💡 La divisa (MXN/USD) se detecta automáticamente al procesar los estados de cuenta
+                  </p>
                 </div>
 
                 {/* No accounts */}
@@ -1118,7 +1112,7 @@ export default function FullFlow() {
                             <span className="text-2xl">📁</span>
                             <div>
                               <p className="text-sm font-medium text-slate-700">Seleccionar estados de cuenta</p>
-                              <p className="text-xs text-slate-500">Hasta 12 PDFs a la vez — se procesan automáticamente</p>
+                              <p className="text-xs text-slate-500">Hasta 24 PDFs a la vez — se procesan automáticamente</p>
                             </div>
                             <input
                               type="file"
@@ -1131,41 +1125,102 @@ export default function FullFlow() {
                         )}
 
                         {/* Results */}
-                        {bs.results && bs.results.length > 0 && (
-                          <div className="space-y-1">
-                            <p className="text-xs font-semibold text-slate-600">Resultados del lote:</p>
-                            {bs.results.map((r, i) => (
-                              <div key={i} className={`flex flex-wrap items-center gap-2 text-xs px-3 py-1.5 rounded-lg ${
-                                r.success ? 'bg-emerald-50' : 'bg-red-50'
-                              }`}>
-                                <span>{r.success ? '✅' : '❌'}</span>
-                                <span className="font-mono text-slate-700 truncate max-w-[180px]">{r.fileName}</span>
-                                {r.success && r.extractedData && (
-                                  <>
-                                    {r.extractedData.mes && <span className="bg-white border border-slate-200 px-2 py-0.5 rounded text-slate-600">{r.extractedData.mes}</span>}
-                                    {r.extractedData.abonos != null && (
-                                      <span className="text-emerald-700">↑ {new Intl.NumberFormat('es-MX',{style:'currency',currency:r.extractedData.divisa||'MXN',maximumFractionDigits:0}).format(r.extractedData.abonos)}</span>
-                                    )}
-                                    {r.extractedData.retiros != null && (
-                                      <span className="text-red-600">↓ {new Intl.NumberFormat('es-MX',{style:'currency',currency:r.extractedData.divisa||'MXN',maximumFractionDigits:0}).format(r.extractedData.retiros)}</span>
-                                    )}
-                                    {r.extractedData.saldo_promedio != null && (
-                                      <span className="text-slate-600">∅ {new Intl.NumberFormat('es-MX',{style:'currency',currency:r.extractedData.divisa||'MXN',maximumFractionDigits:0}).format(r.extractedData.saldo_promedio)}</span>
-                                    )}
-                                    {r.extractedData.confianza && (
-                                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                                        r.extractedData.confianza === 'alta' ? 'bg-emerald-100 text-emerald-700' :
-                                        r.extractedData.confianza === 'media' ? 'bg-amber-100 text-amber-700' :
-                                        'bg-red-100 text-red-700'
-                                      }`}>{r.extractedData.confianza}</span>
-                                    )}
-                                  </>
-                                )}
-                                {!r.success && <span className="text-red-600">{r.error}</span>}
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                        {bs.results && bs.results.length > 0 && (() => {
+                          // Agrupar resultados por divisa
+                          const resultsMXN = bs.results.filter(r => r.success && r.extractedData?.divisa === 'MXN')
+                          const resultsUSD = bs.results.filter(r => r.success && r.extractedData?.divisa === 'USD')
+                          const resultsSinDivisa = bs.results.filter(r => r.success && !r.extractedData?.divisa)
+                          const resultsError = bs.results.filter(r => !r.success)
+                          
+                          const renderResultRow = (r, i) => (
+                            <div key={i} className={`flex flex-wrap items-center gap-2 text-xs px-3 py-1.5 rounded-lg ${
+                              r.success ? 'bg-white border border-slate-100' : 'bg-red-50'
+                            }`}>
+                              <span>{r.success ? '✅' : '❌'}</span>
+                              <span className="font-mono text-slate-700 truncate max-w-[180px]">{r.fileName}</span>
+                              {r.success && r.extractedData && (
+                                <>
+                                  {r.extractedData.mes && <span className="bg-slate-50 border border-slate-200 px-2 py-0.5 rounded text-slate-600">{r.extractedData.mes}</span>}
+                                  {r.extractedData.abonos != null && (
+                                    <span className="text-emerald-700">↑ {new Intl.NumberFormat('es-MX',{style:'currency',currency:r.extractedData.divisa||'MXN',maximumFractionDigits:0}).format(r.extractedData.abonos)}</span>
+                                  )}
+                                  {r.extractedData.retiros != null && (
+                                    <span className="text-red-600">↓ {new Intl.NumberFormat('es-MX',{style:'currency',currency:r.extractedData.divisa||'MXN',maximumFractionDigits:0}).format(r.extractedData.retiros)}</span>
+                                  )}
+                                  {r.extractedData.saldo_promedio != null && (
+                                    <span className="text-slate-600">∅ {new Intl.NumberFormat('es-MX',{style:'currency',currency:r.extractedData.divisa||'MXN',maximumFractionDigits:0}).format(r.extractedData.saldo_promedio)}</span>
+                                  )}
+                                  {r.extractedData.confianza && (
+                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                      r.extractedData.confianza === 'alta' ? 'bg-emerald-100 text-emerald-700' :
+                                      r.extractedData.confianza === 'media' ? 'bg-amber-100 text-amber-700' :
+                                      'bg-red-100 text-red-700'
+                                    }`}>{r.extractedData.confianza}</span>
+                                  )}
+                                </>
+                              )}
+                              {!r.success && <span className="text-red-600">{r.error}</span>}
+                            </div>
+                          )
+                          
+                          return (
+                            <div className="space-y-3">
+                              <p className="text-xs font-semibold text-slate-600">Resultados del lote ({bs.results.length} archivos):</p>
+                              
+                              {/* Pesos MXN */}
+                              {resultsMXN.length > 0 && (
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">MXN</span>
+                                    <span className="text-xs text-slate-500">{resultsMXN.length} estado(s) en pesos</span>
+                                  </div>
+                                  <div className="space-y-1 pl-2">
+                                    {resultsMXN.map(renderResultRow)}
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {/* Dólares USD */}
+                              {resultsUSD.length > 0 && (
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-sky-100 text-sky-700">USD</span>
+                                    <span className="text-xs text-slate-500">{resultsUSD.length} estado(s) en dólares</span>
+                                  </div>
+                                  <div className="space-y-1 pl-2">
+                                    {resultsUSD.map(renderResultRow)}
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {/* Sin divisa detectada */}
+                              {resultsSinDivisa.length > 0 && (
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">⚠️ Sin divisa</span>
+                                    <span className="text-xs text-slate-500">{resultsSinDivisa.length} archivo(s)</span>
+                                  </div>
+                                  <div className="space-y-1 pl-2">
+                                    {resultsSinDivisa.map(renderResultRow)}
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {/* Errores */}
+                              {resultsError.length > 0 && (
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">❌ Errores</span>
+                                    <span className="text-xs text-slate-500">{resultsError.length} archivo(s)</span>
+                                  </div>
+                                  <div className="space-y-1 pl-2">
+                                    {resultsError.map(renderResultRow)}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })()}
                       </div>
                     </div>
                   )

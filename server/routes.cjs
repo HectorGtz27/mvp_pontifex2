@@ -732,16 +732,18 @@ router.get('/solicitudes/:id/cuentas-bancarias', async (req, res) => {
 router.post('/cuentas-bancarias', async (req, res) => {
   try {
     const { solicitudId, banco, divisa, alias } = req.body
-    if (!solicitudId || !banco || !divisa) {
-      return res.status(400).json({ error: 'solicitudId, banco y divisa son requeridos' })
+    if (!solicitudId || !banco) {
+      return res.status(400).json({ error: 'solicitudId y banco son requeridos' })
     }
-    // Verificar que no exista ya la misma combinación banco+divisa para esta solicitud
+    
+    // divisa ya no es requerido - se detecta automáticamente de los estados de cuenta
+    // Verificar que no exista ya el mismo banco para esta solicitud
     const existing = await prisma.cuentaBancaria.findFirst({
-      where: { solicitud_id: solicitudId, banco, divisa },
+      where: { solicitud_id: solicitudId, banco },
     })
     if (existing) {
       return res.status(409).json({
-        error: `Ya existe una cuenta ${banco} ${divisa} para esta solicitud`,
+        error: `Ya existe una cuenta ${banco} para esta solicitud`,
         id: existing.id,
       })
     }
@@ -749,7 +751,7 @@ router.post('/cuentas-bancarias', async (req, res) => {
       data: {
         solicitud_id: solicitudId,
         banco,
-        divisa,
+        divisa: divisa || null, // Opcional - se puede actualizar después
         alias: alias || null,
       },
     })

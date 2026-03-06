@@ -116,7 +116,7 @@ model CuentaBancaria {
   id           String  @id @default(uuid()) @db.Uuid
   solicitud_id String  @db.Uuid
   banco        String  @db.VarChar(100)     // "BBVA", "Banamex", "Santander"…
-  divisa       String  @default("MXN") @db.VarChar(10)  // "MXN" | "USD"
+  divisa       String? @db.VarChar(10)      // "MXN" | "USD" - detectada automáticamente de los documentos
   alias        String? @db.VarChar(200)     // etiqueta libre del usuario
   created_at   DateTime @default(now())
 

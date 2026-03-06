@@ -271,8 +271,8 @@ async function uploadBulk(req, res) {
     if (!files || files.length === 0) {
       return res.status(400).json({ success: false, error: 'No se enviaron archivos.' })
     }
-    if (files.length > 12) {
-      return res.status(400).json({ success: false, error: 'Máximo 12 archivos por lote.' })
+    if (files.length > 24) {
+      return res.status(400).json({ success: false, error: 'Máximo 24 archivos por lote.' })
     }
 
     const cuentaBancariaId = req.body?.cuentaBancariaId || null

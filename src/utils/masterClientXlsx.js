@@ -28,11 +28,29 @@ function getVal(extracted, ...campos) {
 export async function buildMasterClientWorkbook(formData, extracted, bankStatements = []) {
   // 1. Load the template file
   const templatePath = '/MASTER_Cliente_Template.xlsx'
+  console.log('[Excel] Fetching template from:', templatePath)
   const response = await fetch(templatePath)
+  console.log('[Excel] Template fetch status:', response.status, response.ok)
+  if (!response.ok) throw new Error(`No se pudo cargar la plantilla (HTTP ${response.status}): ${templatePath}`)
   const arrayBuffer = await response.arrayBuffer()
+  console.log('[Excel] Template loaded, bytes:', arrayBuffer.byteLength)
   
   const workbook = new ExcelJS.Workbook()
   await workbook.xlsx.load(arrayBuffer)
+
+  // Fix: ExcelJS raises "Shared Formula master must exist above and or left of clone"
+  // when re-serializing templates with sharedFormula references.
+  // Solution: replace every sharedFormula clone cell with its cached result value.
+  workbook.eachSheet(ws => {
+    ws.eachRow({ includeEmpty: false }, row => {
+      row.eachCell({ includeEmpty: false }, cell => {
+        const v = cell.value
+        if (v !== null && typeof v === 'object' && v.sharedFormula !== undefined) {
+          cell.value = v.result !== undefined ? v.result : null
+        }
+      })
+    })
+  })
 
   // 2. Extract values from form and OCR
   // ── Datos Generales (Cliente) ──
@@ -297,6 +315,6 @@ export async function downloadMasterClientXlsx(formData, extracted, fileName = '
     window.URL.revokeObjectURL(url)
   } catch (error) {
     console.error('Error generating Excel:', error)
-    alert('Error al generar el archivo Excel. Por favor, verifica que la plantilla existe.')
+    alert('Error al generar el archivo Excel:\n' + (error?.message || String(error)))
   }
 }
