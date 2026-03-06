@@ -1,4 +1,5 @@
 import { Routes, Route, Link, NavLink, Navigate } from 'react-router-dom'
+import { Toaster } from 'react-hot-toast'
 import FullFlow from './pages/FullFlow'
 import Landing from './pages/Landing'
 import AdminSolicitudes from './pages/AdminSolicitudes'
@@ -63,6 +64,30 @@ function App() {
       <footer className="border-t border-slate-200 py-4 text-center text-slate-500 text-sm">
         Pontifex — Mockup · Financiación del desarrollo sostenible
       </footer>
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          duration: 3000,
+          style: {
+            background: '#363636',
+            color: '#fff',
+          },
+          success: {
+            duration: 3000,
+            iconTheme: {
+              primary: '#10b981',
+              secondary: '#fff',
+            },
+          },
+          error: {
+            duration: 4000,
+            iconTheme: {
+              primary: '#ef4444',
+              secondary: '#fff',
+            },
+          },
+        }}
+      />
     </div>
   )
 }

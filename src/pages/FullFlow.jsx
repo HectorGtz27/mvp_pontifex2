@@ -27,6 +27,8 @@ import {
   deleteCuentaBancaria,
 } from '../utils/api'
 import { downloadMasterClientXlsx } from '../utils/masterClientXlsx'
+import showToast from '../utils/toast'
+
 
 const GRADE_COLORS = { A: 'bg-emerald-100 text-emerald-800', B: 'bg-sky-100 text-sky-800', C: 'bg-amber-100 text-amber-800', D: 'bg-red-100 text-red-800' }
 
@@ -238,6 +240,7 @@ export default function FullFlow() {
         numEmpleadosEventuales: formData.numEmpleadosEventuales || null,
       })
       setClienteId(cliente.id)
+      showToast.cliente.created()
 
       // 2) Create Solicitud linked to the Cliente
       const sol = await createSolicitud({
@@ -254,11 +257,31 @@ export default function FullFlow() {
         notas: formData.notas || null,
       })
       setSolicitudId(sol.id)
+      showToast.solicitud.created()
       setCurrentStep(1)
     } catch (err) {
-      alert('Error al crear la solicitud: ' + err.message)
+      showToast.error(err.message || 'Error al crear la solicitud')
     } finally {
       setSavingApp(false)
+    }
+  }
+
+  // ── Handle credit decision ──
+  const handleDecision = async (type) => {
+    if (!solicitudId) return
+    
+    setDecision(type)
+    try {
+      await submitDecision(solicitudId, { type, reason: analystNotes })
+      const messages = {
+        approved: '✓ Solicitud aprobada exitosamente',
+        adjusted: '✓ Solicitud aprobada con ajustes',
+        rejected: '✓ Solicitud rechazada'
+      }
+      showToast.info(messages[type] || '✓ Decisión registrada')
+    } catch (err) {
+      showToast.error('Error al registrar la decisión')
+      console.error(err)
     }
   }
 
@@ -308,13 +331,18 @@ export default function FullFlow() {
     if (solicitudId) {
       formDataUpload.append('solicitudId', solicitudId)
     }
+    
+    const uploadingToastId = showToast.documento.processing()
+    
     try {
       const res = await fetch('/api/upload', { method: 'POST', body: formDataUpload })
       const data = await res.json()
       if (!res.ok || !data.success) {
         setUploadError(data.error || 'Error al subir el archivo.')
+        showToast.documento.uploadError()
       } else {
         setUploadResult(data)
+        showToast.documento.uploaded()
         
         // Si hay datos extraídos (Textract), mostrarlos para validación
         if (data.extractedData) {
@@ -329,6 +357,7 @@ export default function FullFlow() {
       }
     } catch (err) {
       setUploadError('Error de conexión con el servidor.')
+      showToast.serverError()
     } finally {
       setUploading(false)
     }
@@ -497,8 +526,9 @@ export default function FullFlow() {
       setCuentasBancarias(prev => [...prev, nueva])
       setBsNewBanco('')
       setBsNewDivisa('MXN')
+      showToast.created('Cuenta bancaria')
     } catch (e) {
-      alert(e.message)
+      showToast.error(e.message)
     } finally {
       setBsAddingCuenta(false)
     }
@@ -509,7 +539,10 @@ export default function FullFlow() {
     try {
       await deleteCuentaBancaria(id)
       setCuentasBancarias(prev => prev.filter(c => c.id !== id))
-    } catch (e) { alert(e.message) }
+      showToast.deleted('Cuenta bancaria')
+    } catch (e) { 
+      showToast.error(e.message)
+    }
   }
 
   const handleBulkUpload = async (cuentaId, files) => {
@@ -1644,21 +1677,21 @@ export default function FullFlow() {
               <div className="flex flex-wrap gap-3">
                 <button
                   type="button"
-                  onClick={() => { setDecision('approved'); if (solicitudId) submitDecision(solicitudId, { type: 'approved', reason: analystNotes }).catch(console.error) }}
+                  onClick={() => handleDecision('approved')}
                   className="px-5 py-2.5 rounded-lg font-medium bg-emerald-600 text-white hover:bg-emerald-700"
                 >
                   Aprobar (según recomendación)
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setDecision('adjusted'); if (solicitudId) submitDecision(solicitudId, { type: 'adjusted', reason: analystNotes }).catch(console.error) }}
+                  onClick={() => handleDecision('adjusted')}
                   className="px-5 py-2.5 rounded-lg font-medium border border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100"
                 >
                   Aprobar con ajustes
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setDecision('rejected'); if (solicitudId) submitDecision(solicitudId, { type: 'rejected', reason: analystNotes }).catch(console.error) }}
+                  onClick={() => handleDecision('rejected')}
                   className="px-5 py-2.5 rounded-lg font-medium border border-red-200 text-red-700 bg-red-50 hover:bg-red-100"
                 >
                   Rechazar
