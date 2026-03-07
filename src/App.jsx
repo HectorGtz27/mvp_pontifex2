@@ -1,4 +1,4 @@
-import { Routes, Route, Link, NavLink, Navigate } from 'react-router-dom'
+import { Routes, Route, Link, NavLink } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import FullFlow from './pages/FullFlow'
 import Landing from './pages/Landing'
@@ -56,9 +56,7 @@ function App() {
           <Route path="/solicitudes" element={<AdminSolicitudes />} />
           <Route path="/clientes" element={<AdminClientes />} />
           <Route path="/bancos" element={<AdminBancos />} />
-          <Route path="/documentos" element={<Navigate to="/" replace />} />
-          <Route path="/decision" element={<Navigate to="/" replace />} />
-          <Route path="/covenants" element={<Navigate to="/" replace />} />
+
         </Routes>
       </main>
       <footer className="border-t border-slate-200 py-4 text-center text-slate-500 text-sm">

@@ -2,20 +2,12 @@ const { PutObjectCommand } = require('@aws-sdk/client-s3')
 const { v4: uuidv4 } = require('uuid')
 const path = require('path')
 const { s3, S3_BUCKET } = require('../config/s3.cjs')
+const { MAX_FILE_SIZE, ALLOWED_MIME_TYPES } = require('../config/upload.cjs')
 const { extractRawTextSync, extractRawTextAsync } = require('../services/textractService.cjs')
 const { extractBankStatementData, extractCSFData, extractFinancialStatementsData } = require('../services/bedrockService.cjs')
 const { extractFirstPage } = require('../services/pdfService.cjs')
 const { createDocumento } = require('../services/documentoService.cjs')
 const { processDocumentoCampos } = require('../services/campoExtraidoService.cjs')
-
-const ALLOWED_MIME = [
-  'application/pdf',
-  'image/jpeg',
-  'image/jpg',
-  'image/png',
-  'application/octet-stream',
-]
-const MAX_SIZE = 30 * 1024 * 1024 // 30 MB (estados financieros PDF multi-página)
 
 async function uploadFile(req, res) {
   try {
@@ -26,7 +18,7 @@ async function uploadFile(req, res) {
     }
 
     // Validate MIME type
-    if (!ALLOWED_MIME.includes(file.mimetype)) {
+    if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
       return res.status(400).json({
         success: false,
         error: `Tipo de archivo no permitido (${file.mimetype}). Solo se permiten PDF, JPG, JPEG, PNG.`,
@@ -34,10 +26,10 @@ async function uploadFile(req, res) {
     }
 
     // Validate size (multer already limits, but double-check)
-    if (file.size > MAX_SIZE) {
+    if (file.size > MAX_FILE_SIZE) {
       return res.status(400).json({
         success: false,
-        error: `El archivo excede el límite de 10 MB (${(file.size / 1024 / 1024).toFixed(2)} MB).`,
+        error: `El archivo excede el límite de ${MAX_FILE_SIZE / 1024 / 1024} MB (${(file.size / 1024 / 1024).toFixed(2)} MB).`,
       })
     }
 

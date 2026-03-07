@@ -167,8 +167,3 @@ export async function deleteCuentaBancaria(id) {
   if (!res.ok) throw new Error(`API error ${res.status}`)
   return res.json()
 }
-
-// ─── Backward compat aliases ───────────────────────────────
-export const fetchApplications = fetchSolicitudes
-export const fetchApplication = fetchSolicitud
-export const createApplication = createSolicitud

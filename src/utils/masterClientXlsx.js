@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs'
+import { BG_EXCEL_MAP, ER_EXCEL_MAP } from '../shared/ocrFields'
 
 /**
  * Get first extracted value by field name (campo) from OCR spreadsheet.
@@ -25,7 +26,7 @@ function getVal(extracted, ...campos) {
  * @param {Array}  extracted       - OCR spreadsheet rows (CSF, etc.)
  * @param {Array}  [bankStatements] - [{ mes:'YYYY-MM', abonos:number, retiros:number, banco_detectado:string }]
  */
-export async function buildMasterClientWorkbook(formData, extracted, bankStatements = []) {
+export async function buildMasterClientWorkbook(formData, extracted, bankStatements = [], financialYears = []) {
   // 1. Load the template file
   const templatePath = '/MASTER_Cliente_Template.xlsx'
   console.log('[Excel] Fetching template from:', templatePath)
@@ -214,7 +215,39 @@ export async function buildMasterClientWorkbook(formData, extracted, bankStateme
     }
   }
 
-  // 6. Add or update "Datos extraídos (OCR)" sheet
+  // 6. Fill "Estados Financieros" sheet with Balance General + Estado de Resultados
+  if (financialYears && financialYears.length > 0) {
+    const efSheet = workbook.getWorksheet('Estados Financieros')
+    if (efSheet) {
+      // Columns B/D/F → years[0]/years[1]/years[2] (oldest to newest)
+      const YEAR_COLS = ['C', 'E', 'G']
+
+      financialYears.slice(0, 3).forEach((yr, idx) => {
+        const col = YEAR_COLS[idx]
+        if (!col) return
+
+        // Balance General values
+        const bg = yr.balance_general || yr  // support both nested and flat shapes
+        for (const [key, row] of BG_EXCEL_MAP) {
+          const val = bg[key]
+          if (val != null) efSheet.getCell(`${col}${row}`).value = Number(val)
+        }
+
+        // Estado de Resultados values
+        const er = yr.estado_resultados || yr
+        for (const [key, row] of ER_EXCEL_MAP) {
+          const val = er[key]
+          if (val != null) efSheet.getCell(`${col}${row}`).value = Number(val)
+        }
+      })
+
+      console.log(`[Excel] ✅ Hoja "Estados Financieros" llenada con ${Math.min(financialYears.length, 3)} años`)
+    } else {
+      console.warn('[Excel] Hoja "Estados Financieros" no encontrada en el template')
+    }
+  }
+
+  // 7. Add or update "Datos extraídos (OCR)" sheet
   const ocrSheetName = 'Datos extraídos (OCR)'
   
   // Remove old OCR sheet if exists
@@ -297,9 +330,9 @@ function mesToMonthNumber(mes) {
 /**
  * Trigger download of master_client_pontifex.xlsx filled with formData and extracted data.
  */
-export async function downloadMasterClientXlsx(formData, extracted, fileName = 'master_client_pontifex.xlsx', bankStatements = []) {
+export async function downloadMasterClientXlsx(formData, extracted, fileName = 'master_client_pontifex.xlsx', bankStatements = [], financialYears = []) {
   try {
-    const workbook = await buildMasterClientWorkbook(formData, extracted, bankStatements)
+    const workbook = await buildMasterClientWorkbook(formData, extracted, bankStatements, financialYears)
     
     // Generate buffer and trigger download
     const buffer = await workbook.xlsx.writeBuffer()

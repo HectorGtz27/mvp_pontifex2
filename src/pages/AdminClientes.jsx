@@ -1,16 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, Fragment } from 'react'
 import { Link } from 'react-router-dom'
 import { fetchClientes } from '../utils/api'
-
-function formatDate(iso) {
-  if (!iso) return '—'
-  return new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium' }).format(new Date(iso))
-}
-
-function formatMoney(mxn) {
-  if (typeof mxn !== 'number' || Number.isNaN(mxn)) return '—'
-  return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(mxn)
-}
+import { formatDate, formatMoney } from '../utils/format'
 
 const ESTATUS_COLORS = {
   borrador: 'bg-slate-100 text-slate-600',
@@ -144,9 +135,8 @@ export default function AdminClientes() {
                 const ubicacion = [c.ciudad, c.estado].filter(Boolean).join(', ') || '—'
 
                 return (
-                  <>
+                  <Fragment key={c.id}>
                     <tr
-                      key={c.id}
                       className="border-b border-slate-100 hover:bg-slate-50/50 cursor-pointer"
                       onClick={() => toggleExpand(c.id)}
                     >
@@ -228,7 +218,7 @@ export default function AdminClientes() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 )
               })}
             </tbody>

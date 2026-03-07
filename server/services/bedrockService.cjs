@@ -1,22 +1,26 @@
 'use strict'
 
 const { BedrockRuntimeClient, ConverseCommand } = require('@aws-sdk/client-bedrock-runtime')
+const { awsCredentials } = require('../config/aws.cjs')
 
 // Model used: Claude Haiku 4.5 via Bedrock cross-region inference
 // Update this if you switch to a different model
 const MODEL_ID = 'us.anthropic.claude-haiku-4-5-20251001-v1:0'
 
+// Cached singleton — avoid re-creating the client on every request
+let _client = null
+function getClient() {
+  if (!_client) {
+    _client = new BedrockRuntimeClient(awsCredentials)
+  }
+  return _client
+}
+
 /**
- * Creates a fresh BedrockRuntimeClient using IAM credentials.
+ * Strips markdown JSON fences (```json ... ```) that Claude sometimes adds.
  */
-function createClient() {
-  return new BedrockRuntimeClient({
-    region: process.env.AWS_REGION || 'us-east-1',
-    credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-    },
-  })
+function cleanJsonFence(raw) {
+  return raw.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
 }
 
 /**
@@ -80,7 +84,7 @@ TEXTO DEL ESTADO DE CUENTA:
 ${rawText.substring(0, 15000)}
 ---`
 
-  const client = createClient()
+  const client = getClient()
 
   const command = new ConverseCommand({
     modelId: MODEL_ID,
@@ -105,8 +109,7 @@ ${rawText.substring(0, 15000)}
   // Parse the JSON response
   let parsed
   try {
-    // Claude sometimes wraps in ```json ... ``` even with instructions — strip it
-    const cleaned = rawResponse.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
+    const cleaned = cleanJsonFence(rawResponse)
     parsed = JSON.parse(cleaned)
   } catch (parseErr) {
     console.error('[Bedrock] Error parseando JSON de Claude:', parseErr.message)
@@ -230,7 +233,7 @@ TEXTO DE LA CONSTANCIA DE SITUACIÓN FISCAL:
 ${rawText.substring(0, 15000)}
 ---`
 
-  const client = createClient()
+  const client = getClient()
 
   const command = new ConverseCommand({
     modelId: MODEL_ID,
@@ -255,7 +258,7 @@ ${rawText.substring(0, 15000)}
   // Parse the JSON response
   let parsed
   try {
-    const cleaned = rawResponse.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
+    const cleaned = cleanJsonFence(rawResponse)
     parsed = JSON.parse(cleaned)
   } catch (parseErr) {
     console.error('[Bedrock/CSF] Error parseando JSON de Claude:', parseErr.message)
@@ -322,4 +325,161 @@ ${rawText.substring(0, 15000)}
   return result
 }
 
-module.exports = { extractBankStatementData, extractCSFData }
+/**
+ * Extracts Balance General + Estado de Resultados for up to 3 fiscal years
+ * from a single DOCX/PDF document (~12 pages: 4 pages × 3 years).
+ *
+ * Returns an object:
+ * {
+ *   years: [
+ *     {
+ *       periodo: 'YYYY' | 'YYYY-MM',   // fiscal period label
+ *       inventarios, clientes, deudores_diversos,
+ *       terrenos_edificios, maquinaria_equipo, equipo_transporte, intangibles,
+ *       proveedores, acreedores_diversos, docs_pagar_cp, docs_pagar_lp, otros_pasivos,
+ *       capital_social, utilidades_ejercicios_anteriores, suma_capital_contable,
+ *       ventas, costos_venta, gastos_operacion, gastos_financieros,
+ *       otros_productos, otros_gastos, impuestos, depreciacion
+ *     }, ...
+ *   ],
+ *   confianza: 'alta|media|baja'
+ * }
+ *
+ * @param {string} rawText - Plain text extracted by Textract from the full document
+ * @returns {Promise<Object>}
+ */
+async function extractFinancialStatementsData(rawText) {
+  console.log(`[Bedrock/EF] Analizando estados financieros (${rawText.length} caracteres)...`)
+
+  const prompt = `Eres un experto contable mexicano especializado en análisis de estados financieros de empresas.
+
+Se te proporcionará el texto completo de un documento que contiene los Estados Financieros de una empresa para TRES ejercicios fiscales distintos. El documento incluye:
+1. Balance General (Activo Circulante, Activo Fijo, Otros Activos, Pasivo Circulante, Pasivo Largo Plazo, Capital Contable)
+2. Estado de Resultados (Ventas, Costos, Gastos, Utilidades)
+
+TAREA: Identifica los tres períodos fiscales y extrae para CADA UNO los siguientes conceptos numéricos (en la divisa del documento, sin símbolo, solo número o null):
+
+Balance General — Activo:
+- inventarios
+- clientes (cuentas por cobrar a clientes)
+- deudores_diversos
+- terrenos_edificios (Terrenos y Edificios)
+- maquinaria_equipo (Maquinaria y Equipo)
+- equipo_transporte (Equipo de Transporte)
+- intangibles (Intangibles / registro de marca)
+
+Balance General — Pasivo:
+- proveedores
+- acreedores_diversos (Acreedores Div.)
+- docs_pagar_cp (Documentos por pagar a corto plazo, CP)
+- docs_pagar_lp (Documentos por pagar a largo plazo, LP)
+- otros_pasivos
+
+Balance General — Capital:
+- capital_social
+- utilidades_ejercicios_anteriores (Utilidades de Ejercicios Anteriores / Ut. Ejercicios anteriores)
+- suma_capital_contable (Suma del Capital Contable / Total Capital Contable / Total Capital)
+
+Estado de Resultados:
+- ventas (ingresos totales / ventas netas)
+- costos_venta (Costos de Venta / Costo de lo Vendido)
+- gastos_operacion (Gastos de Operación / Gastos Operativos)
+- gastos_financieros (Gastos Financieros / Gastos Fin.)
+- otros_productos (Otros Productos / Otros ingresos)
+- otros_gastos (Otros Gastos)
+- impuestos (ISR / Impuestos / Impuesto sobre la renta)
+- depreciacion (Depreciación / Amortización)
+
+INSTRUCCIONES IMPORTANTES:
+- Identifica el período por el encabezado de columna (ej: "31/12/2019", "31/12/2020", "30/6/2021", "2019", "2020", "2021", "Dic 2019", etc.)
+- Para el campo "periodo": usa el año en formato "YYYY" o "YYYY-MM" si incluye mes/año (ej: "2019", "2021-06")
+- Los valores son SALDOS, no percentajes (ignora columnas de %)
+- Si el concepto no aparece o no puedes determinarlo, usa null
+- Ordena los años de más antiguo a más reciente
+- Los montos deben ser números sin comas, sin signos, sin texto (solo el valor numérico)
+
+Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional, sin markdown:
+{
+  "years": [
+    {
+      "periodo": "YYYY o YYYY-MM",
+      "inventarios": number_or_null,
+      "clientes": number_or_null,
+      "deudores_diversos": number_or_null,
+      "terrenos_edificios": number_or_null,
+      "maquinaria_equipo": number_or_null,
+      "equipo_transporte": number_or_null,
+      "intangibles": number_or_null,
+      "proveedores": number_or_null,
+      "acreedores_diversos": number_or_null,
+      "docs_pagar_cp": number_or_null,
+      "docs_pagar_lp": number_or_null,
+      "otros_pasivos": number_or_null,
+      "capital_social": number_or_null,
+      "utilidades_ejercicios_anteriores": number_or_null,
+      "suma_capital_contable": number_or_null,
+      "ventas": number_or_null,
+      "costos_venta": number_or_null,
+      "gastos_operacion": number_or_null,
+      "gastos_financieros": number_or_null,
+      "otros_productos": number_or_null,
+      "otros_gastos": number_or_null,
+      "impuestos": number_or_null,
+      "depreciacion": number_or_null
+    }
+  ],
+  "confianza": "alta|media|baja"
+}
+
+TEXTO DEL DOCUMENTO DE ESTADOS FINANCIEROS:
+---
+${rawText.substring(0, 50000)}
+---`
+
+  const client = getClient()
+
+  const command = new ConverseCommand({
+    modelId: MODEL_ID,
+    messages: [
+      {
+        role: 'user',
+        content: [{ text: prompt }],
+      },
+    ],
+    inferenceConfig: {
+      maxTokens: 2048,
+      temperature: 0,
+    },
+  })
+
+  console.log('[Bedrock/EF] Enviando a Claude via Converse API...')
+  const response = await client.send(command)
+
+  const rawResponse = response.output?.message?.content?.[0]?.text || ''
+  console.log(`[Bedrock/EF] Respuesta raw (primeros 800 chars): ${rawResponse.substring(0, 800)}`)
+
+  let parsed
+  try {
+    const cleaned = cleanJsonFence(rawResponse)
+    parsed = JSON.parse(cleaned)
+  } catch (parseErr) {
+    console.error('[Bedrock/EF] Error parseando JSON de Claude:', parseErr.message)
+    return {
+      years: [],
+      confianza: null,
+      parseError: `No se pudo parsear la respuesta: ${parseErr.message}`,
+      rawResponse,
+    }
+  }
+
+  const years = Array.isArray(parsed.years) ? parsed.years : []
+  console.log(`[Bedrock/EF] ✅ Extraídos ${years.length} periodos:`, years.map(y => y.periodo))
+
+  return {
+    years,
+    confianza: parsed.confianza || null,
+    rawResponse,
+  }
+}
+
+module.exports = { extractBankStatementData, extractCSFData, extractFinancialStatementsData }

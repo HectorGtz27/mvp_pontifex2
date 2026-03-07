@@ -1,11 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { fetchApplications } from '../utils/api'
-
-function formatMoney(mxn) {
-  if (typeof mxn !== 'number' || Number.isNaN(mxn)) return '—'
-  return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(mxn)
-}
+import { fetchSolicitudes } from '../utils/api'
+import { formatMoney } from '../utils/format'
 
 export default function AdminSolicitudes() {
   const navigate = useNavigate()
@@ -21,7 +17,7 @@ export default function AdminSolicitudes() {
     setLoading(true)
     setError(null)
 
-    fetchApplications({ q: filteredQuery, limit: 100, offset: 0 })
+    fetchSolicitudes({ q: filteredQuery, limit: 100, offset: 0 })
       .then((data) => {
         if (cancelled) return
         setRows(Array.isArray(data) ? data : [])

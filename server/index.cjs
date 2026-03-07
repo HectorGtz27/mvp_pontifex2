@@ -21,8 +21,8 @@ app.use(express.json())
 app.use('/api', routes)
 
 // Health check
+const prisma = require('./prisma.cjs')
 app.get('/api/health', async (_req, res) => {
-  const prisma = require('./prisma.cjs')
   try {
     await prisma.$queryRaw`SELECT 1`
     res.json({ status: 'ok', database: 'connected' })
@@ -48,9 +48,9 @@ process.on('unhandledRejection', (reason, promise) => {
 })
 
 const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Pontifex API running on http://10.41.48.5:${PORT}`)
-  console.log(`📊 Health check: http://10.41.48.5:${PORT}/api/health`)
-  console.log(`📁 Upload endpoint: http://10.41.48.5:${PORT}/api/upload`)
+  console.log(`🚀 Pontifex API running on http://0.0.0.0:${PORT}`)
+  console.log(`📊 Health check: http://localhost:${PORT}/api/health`)
+  console.log(`📁 Upload endpoint: http://localhost:${PORT}/api/upload`)
 })
 
 server.on('error', (err) => {

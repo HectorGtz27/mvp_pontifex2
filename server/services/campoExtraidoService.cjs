@@ -1,8 +1,9 @@
 'use strict'
 
 const prisma = require('../prisma.cjs')
+const { BG_FIELDS, ER_FIELDS, CONFIANZA_MAP } = require('../config/ocrFields.cjs')
 
-// ═══════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════
 //  campoExtraidoService
 //  Parsea el JSON crudo de extracted_data de un Documento y crea
 //  filas normalizadas en la tabla campos_extraidos.
@@ -11,10 +12,7 @@ const prisma = require('../prisma.cjs')
 //    · constancia_situacion_fiscal  → Textract FORMS
 //    · edos_cuenta_bancarios        → Textract TEXT + Bedrock Claude
 //    · estado_cuenta_bancario       → alias del anterior
-// ═══════════════════════════════════════════════════════════════
-
-// Mapeo de confianza string (Bedrock) → decimal 0-1
-const CONFIANZA_MAP = { alta: 0.90, media: 0.70, baja: 0.50 }
+// ═════════════════════════════════════════════════════════════
 
 /**
  * Normaliza el valor de confianza a escala 0-1.
@@ -135,11 +133,52 @@ function parseBankStatement(data) {
   return campos
 }
 
+// ─── Parser: Estados Financieros (Balance General + Estado de Resultados) ────
+/**
+ * extracted_data viene de extractFinancialStatementsData (bedrockService):
+ * {
+ *   tipo: 'estados_financieros',
+ *   periodo: 'YYYY' | 'YYYY-MM',
+ *   confianza: 'alta|media|baja',
+ *   balance_general: { inventarios, clientes, ... },
+ *   estado_resultados: { ventas, costos_venta, ... }
+ * }
+ */
+function parseEstadosFinancieros(data) {
+  if (!data || typeof data !== 'object') return []
+
+  const campos    = []
+  const confianza = normalizeConfianza(data.confianza || 'media')
+  const periodo   = data.periodo || null
+  const fuente    = 'bedrock_claude'
+
+  const bg = data.balance_general || {}
+  for (const { key, label } of BG_FIELDS) {
+    const val = bg[key]
+    if (val !== null && val !== undefined) {
+      campos.push({ seccion: 'balance_general', campo: label, valor: String(val), periodo, fuente, confianza, estado: 'procesado' })
+    }
+  }
+
+  const er = data.estado_resultados || {}
+  for (const { key, label } of ER_FIELDS) {
+    const val = er[key]
+    if (val !== null && val !== undefined) {
+      campos.push({ seccion: 'estado_resultados', campo: label, valor: String(val), periodo, fuente, confianza, estado: 'procesado' })
+    }
+  }
+
+  return campos
+}
+
 // ─── Dispatcher central ──────────────────────────────────────
 const PARSERS = {
   constancia_situacion_fiscal: parseCSF,
   edos_cuenta_bancarios:       parseBankStatement,
   estado_cuenta_bancario:      parseBankStatement,
+  edos_financieros_anio1:      parseEstadosFinancieros,
+  edos_financieros_anio2:      parseEstadosFinancieros,
+  edo_financiero_parcial:      parseEstadosFinancieros,
 }
 
 /**
@@ -181,16 +220,14 @@ async function processDocumentoCampos(documento) {
   // Eliminar campos previos del mismo documento (re-procesamiento idempotente)
   await prisma.campoExtraido.deleteMany({ where: { documento_id: documentoId } })
 
-  // Insertar campos nuevos
-  for (const fila of filas) {
-    await prisma.campoExtraido.create({
-      data: {
-        solicitud_id: solicitudId,
-        documento_id: documentoId,
-        ...fila,
-      },
-    })
-  }
+  // Insertar todos los campos en una sola operación
+  await prisma.campoExtraido.createMany({
+    data: filas.map(fila => ({
+      solicitud_id: solicitudId,
+      documento_id: documentoId,
+      ...fila,
+    })),
+  })
 
   // Marcar el documento como procesado
   await prisma.documento.update({

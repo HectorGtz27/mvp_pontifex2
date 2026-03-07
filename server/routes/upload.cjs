@@ -2,34 +2,22 @@ const express = require('express')
 const multer = require('multer')
 const path = require('path')
 const { uploadFile, uploadBulk } = require('../controllers/uploadController.cjs')
+const { MAX_FILE_SIZE, ALLOWED_MIME_TYPES, ALLOWED_EXTENSIONS } = require('../config/upload.cjs')
 
 const router = express.Router()
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  limits: { fileSize: MAX_FILE_SIZE },
   fileFilter(_req, file, cb) {
-    // Validar por MIME type
-    const allowedMimeTypes = [
-      'application/pdf',
-      'application/x-pdf',
-      'application/octet-stream', // Algunos PDFs vienen así
-      'image/jpeg',
-      'image/jpg',
-      'image/png',
-    ]
-    
-    // Validar por extensión (más confiable que MIME type)
     const ext = path.extname(file.originalname).toLowerCase()
-    const allowedExtensions = ['.pdf', '.jpg', '.jpeg', '.png']
     
-    const validMimeType = allowedMimeTypes.includes(file.mimetype)
-    const validExtension = allowedExtensions.includes(ext)
+    const validMimeType = ALLOWED_MIME_TYPES.includes(file.mimetype)
+    const validExtension = ALLOWED_EXTENSIONS.includes(ext)
     
     console.log(`[Multer] Validando: ${file.originalname} | mimetype: ${file.mimetype} | ext: ${ext}`)
     
     if (validExtension && (validMimeType || ext === '.pdf')) {
-      // Si la extensión es válida y el mimetype es válido O es un PDF, aceptar
       cb(null, true)
     } else {
       console.log(`[Multer] ❌ Archivo rechazado: ${file.originalname}`)
@@ -68,7 +56,7 @@ router.use((err, _req, res, _next) => {
   
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ success: false, error: 'El archivo excede el límite de 10 MB.' })
+      return res.status(400).json({ success: false, error: 'El archivo excede el límite de 30 MB.' })
     }
     if (err.code === 'LIMIT_FILE_COUNT') {
       return res.status(400).json({ success: false, error: 'Máximo 24 archivos por lote.' })
