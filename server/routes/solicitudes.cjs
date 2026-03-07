@@ -142,7 +142,11 @@ router.get('/solicitudes/:id/documents', async (req, res) => {
     const docs = await prisma.documento.findMany({
       where: { solicitud_id: req.params.id },
       orderBy: { created_at: 'desc' },
-      include: { tipo_documento: { select: { label: true, categoria_id: true } } },
+      include: {
+        tipo_documento: { select: { label: true, categoria_id: true } },
+        estado_cuenta: true,
+        cuenta_bancaria: { select: { banco: true, divisa: true } },
+      },
     })
     res.json(docs.map(d => ({
       id: d.id,
@@ -157,6 +161,15 @@ router.get('/solicitudes/:id/documents', async (req, res) => {
       estado: d.estado,
       confianza: d.confianza ? Number(d.confianza) : null,
       createdAt: d.created_at,
+      // Datos bancarios (solo para estados de cuenta)
+      estadoCuenta: d.estado_cuenta ? {
+        periodo: d.estado_cuenta.periodo,
+        abonos: d.estado_cuenta.abonos ? Number(d.estado_cuenta.abonos) : null,
+        retiros: d.estado_cuenta.retiros ? Number(d.estado_cuenta.retiros) : null,
+        saldoPromedio: d.estado_cuenta.saldo_promedio ? Number(d.estado_cuenta.saldo_promedio) : null,
+      } : null,
+      banco: d.cuenta_bancaria?.banco ?? null,
+      divisa: d.cuenta_bancaria?.divisa ?? null,
     })))
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -314,18 +327,13 @@ router.get('/solicitudes/:id/cuentas-bancarias', async (req, res) => {
           where: { tipo_documento_id: { in: ['edos_cuenta_bancarios', 'estado_cuenta_bancario'] } },
           select: {
             id: true,
-            periodo: true,
-            divisa: true,
-            banco: true,
-            abonos: true,
-            retiros: true,
-            saldo_promedio: true,
             confianza: true,
             estado: true,
             nombre_archivo: true,
             created_at: true,
+            estado_cuenta: true,
           },
-          orderBy: { periodo: 'asc' },
+          orderBy: { created_at: 'asc' },
         },
       },
     })
@@ -339,19 +347,19 @@ router.get('/solicitudes/:id/cuentas-bancarias', async (req, res) => {
       createdAt: c.created_at,
       documentos: c.documentos.map(d => ({
         id: d.id,
-        periodo: d.periodo,
-        divisa: d.divisa,
-        banco: d.banco,
-        abonos: d.abonos != null ? Number(d.abonos) : null,
-        retiros: d.retiros != null ? Number(d.retiros) : null,
-        saldoPromedio: d.saldo_promedio != null ? Number(d.saldo_promedio) : null,
+        periodo: d.estado_cuenta?.periodo ?? null,
+        divisa: c.divisa,
+        banco: c.banco,
+        abonos: d.estado_cuenta?.abonos != null ? Number(d.estado_cuenta.abonos) : null,
+        retiros: d.estado_cuenta?.retiros != null ? Number(d.estado_cuenta.retiros) : null,
+        saldoPromedio: d.estado_cuenta?.saldo_promedio != null ? Number(d.estado_cuenta.saldo_promedio) : null,
         confianza: d.confianza != null ? Number(d.confianza) : null,
         estado: d.estado,
         nombreArchivo: d.nombre_archivo,
         createdAt: d.created_at,
       })),
       mesesCubiertos: c.documentos
-        .map(d => d.periodo)
+        .map(d => d.estado_cuenta?.periodo)
         .filter(Boolean)
         .sort(),
     })))

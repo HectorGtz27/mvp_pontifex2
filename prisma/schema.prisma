@@ -134,14 +134,7 @@ model Documento {
   id                  String   @id @default(uuid()) @db.Uuid
   solicitud_id        String   @db.Uuid
   tipo_documento_id   String   @db.VarChar(50)
-  // ── Contexto bancario (solo para estados de cuenta) ──
   cuenta_bancaria_id  String?  @db.Uuid
-  periodo             String?  @db.VarChar(7)    // "YYYY-MM"
-  divisa              String?  @db.VarChar(10)   // "MXN" | "USD"
-  abonos              Decimal? @db.Decimal(18, 2)
-  retiros             Decimal? @db.Decimal(18, 2)
-  saldo_promedio      Decimal? @db.Decimal(18, 2)
-  banco               String?  @db.VarChar(100)
   // ── Archivo ──
   nombre_archivo      String   @db.VarChar(500)
   s3_url              String   @db.Text
@@ -158,12 +151,30 @@ model Documento {
   solicitud        Solicitud        @relation(fields: [solicitud_id], references: [id], onDelete: Cascade)
   tipo_documento   TipoDocumento    @relation(fields: [tipo_documento_id], references: [id])
   cuenta_bancaria  CuentaBancaria?  @relation(fields: [cuenta_bancaria_id], references: [id], onDelete: SetNull)
+  estado_cuenta    EstadoCuenta?
   campos_extraidos CampoExtraido[]
 
   @@index([solicitud_id])
   @@index([tipo_documento_id])
   @@index([cuenta_bancaria_id])
   @@map("documentos")
+}
+
+// ─── 6b. Estado de cuenta (datos financieros extraídos de estados de cuenta bancarios) ──
+
+model EstadoCuenta {
+  id             Int      @id @default(autoincrement())
+  documento_id   String   @unique @db.Uuid
+  periodo        String?  @db.VarChar(7)      // "YYYY-MM"
+  abonos         Decimal? @db.Decimal(18, 2)
+  retiros        Decimal? @db.Decimal(18, 2)
+  saldo_promedio Decimal? @db.Decimal(18, 2)
+  created_at     DateTime @default(now())
+
+  // ── Relations ──
+  documento Documento @relation(fields: [documento_id], references: [id], onDelete: Cascade)
+
+  @@map("estados_cuenta")
 }
 
 // ─── 6. Campo extraído (datos OCR normalizados) ───────────────

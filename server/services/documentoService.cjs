@@ -19,16 +19,7 @@ const prisma = require('../prisma.cjs')
 async function createDocumento({ solicitudId, documentType, cuentaBancariaId = null, fileName, s3Url, s3Key, mimeType, fileSize, extractedData, textractError }) {
   console.log(`\n[DocumentoService] ▶ Guardando documento en BD...`)
 
-  // Extraer campos bancarios de extractedData si existen
   const esBancario = documentType === 'edos_cuenta_bancarios' || documentType === 'estado_cuenta_bancario'
-  const bancoCampos = esBancario && extractedData ? {
-    banco:          extractedData.banco_detectado ?? null,
-    divisa:         extractedData.divisa ?? null,
-    periodo:        extractedData.mes ?? null,
-    abonos:         extractedData.abonos != null ? extractedData.abonos : null,
-    retiros:        extractedData.retiros != null ? extractedData.retiros : null,
-    saldo_promedio: extractedData.saldo_promedio != null ? extractedData.saldo_promedio : null,
-  } : {}
 
   const documento = await prisma.documento.create({
     data: {
@@ -42,9 +33,40 @@ async function createDocumento({ solicitudId, documentType, cuentaBancariaId = n
       tamano_archivo:     fileSize,
       extracted_data:     extractedData ?? undefined,
       textract_error:     textractError ?? null,
-      ...bancoCampos,
     },
   })
+
+  // ── Crear registro en estados_cuenta si es estado de cuenta bancario ──
+  if (esBancario && extractedData) {
+    const periodo        = extractedData.mes ?? null
+    const abonos         = extractedData.abonos != null ? extractedData.abonos : null
+    const retiros        = extractedData.retiros != null ? extractedData.retiros : null
+    const saldoPromedio  = extractedData.saldo_promedio != null ? extractedData.saldo_promedio : null
+
+    if (periodo || abonos != null || retiros != null || saldoPromedio != null) {
+      await prisma.estadoCuenta.create({
+        data: {
+          documento_id:   documento.id,
+          periodo,
+          abonos,
+          retiros,
+          saldo_promedio: saldoPromedio,
+        },
+      })
+      console.log(`[DocumentoService] ✓ EstadoCuenta creado (periodo: ${periodo})`)
+    }
+
+    // Propagar divisa/banco detectados a la cuenta bancaria (si existe y faltan)
+    if (cuentaBancariaId) {
+      const divisa = extractedData.divisa ?? null
+      if (divisa) {
+        await prisma.cuentaBancaria.updateMany({
+          where: { id: cuentaBancariaId, divisa: null },
+          data:  { divisa },
+        })
+      }
+    }
+  }
 
   // Update docs_subidos count on the solicitud
   if (solicitudId) {
