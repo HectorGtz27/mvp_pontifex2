@@ -2,14 +2,20 @@ const { PutObjectCommand } = require('@aws-sdk/client-s3')
 const { v4: uuidv4 } = require('uuid')
 const path = require('path')
 const { s3, S3_BUCKET } = require('../config/s3.cjs')
-const { analyzeDocumentFormsAsync, extractRawTextSync } = require('../services/textractService.cjs')
-const { extractBankStatementData, extractCSFData } = require('../services/bedrockService.cjs')
+const { extractRawTextSync, extractRawTextAsync } = require('../services/textractService.cjs')
+const { extractBankStatementData, extractCSFData, extractFinancialStatementsData } = require('../services/bedrockService.cjs')
 const { extractFirstPage } = require('../services/pdfService.cjs')
 const { createDocumento } = require('../services/documentoService.cjs')
 const { processDocumentoCampos } = require('../services/campoExtraidoService.cjs')
 
-const ALLOWED_MIME = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png']
-const MAX_SIZE = 10 * 1024 * 1024 // 10 MB
+const ALLOWED_MIME = [
+  'application/pdf',
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'application/octet-stream',
+]
+const MAX_SIZE = 30 * 1024 * 1024 // 30 MB (estados financieros PDF multi-página)
 
 async function uploadFile(req, res) {
   try {
@@ -128,6 +134,72 @@ async function uploadFile(req, res) {
       } catch (err) {
         console.error('❌ [Upload] Error procesando estado de cuenta:', err.message)
         textractError = `Error procesando estado de cuenta: ${err.message}`
+      }
+    } else if (
+      documentTypeId === 'edos_financieros_anio1' ||
+      documentTypeId === 'edos_financieros_anio2' ||
+      documentTypeId === 'edo_financiero_parcial'
+    ) {
+      // ──────────────────────────────────────────────────────────────────
+      // ESTADO FINANCIERO — 1 PDF por ejercicio fiscal
+      // Flujo: StartDocumentTextDetection (async) leyendo desde S3,
+      //        polling hasta SUCCEEDED, filtrar sólo bloques LINE,
+      //        limitar a las primeras 2 páginas.
+      // ──────────────────────────────────────────────────────────────────
+      console.log(`[Upload] 📈 Estado financiero (${documentTypeId}), extrayendo con Textract async + Claude...`)
+      try {
+        // ── Extracción async vía S3: StartDocumentTextDetection, sólo LINEs, págs 1-2 ──
+        console.log(`[Upload] 📄 Iniciando StartDocumentTextDetection sobre S3: ${key} (págs 1-2)`)
+        const rawText = await extractRawTextAsync(S3_BUCKET, key, 2)
+
+        if (!rawText || rawText.trim().length < 100) {
+          throw new Error('Textract no pudo extraer texto suficiente del documento')
+        }
+        console.log(`[Upload] 📄 Textract extrajo ${rawText.length} caracteres`)
+        
+
+        const bedrockResult = await extractFinancialStatementsData(rawText)
+        const yearData = bedrockResult.years?.[0]
+
+        if (!yearData) {
+          throw new Error('Claude no pudo identificar el período fiscal en el documento')
+        }
+
+        extractedData = {
+          tipo: 'estados_financieros',
+          periodo: yearData.periodo,
+          confianza: bedrockResult.confianza,
+          balance_general: {
+            inventarios:                      yearData.inventarios,
+            clientes:                         yearData.clientes,
+            deudores_diversos:                yearData.deudores_diversos,
+            terrenos_edificios:               yearData.terrenos_edificios,
+            maquinaria_equipo:                yearData.maquinaria_equipo,
+            equipo_transporte:                yearData.equipo_transporte,
+            intangibles:                      yearData.intangibles,
+            proveedores:                      yearData.proveedores,
+            acreedores_diversos:              yearData.acreedores_diversos,
+            docs_pagar_cp:                    yearData.docs_pagar_cp,
+            docs_pagar_lp:                    yearData.docs_pagar_lp,
+            otros_pasivos:                    yearData.otros_pasivos,
+            capital_social:                   yearData.capital_social,
+            utilidades_ejercicios_anteriores: yearData.utilidades_ejercicios_anteriores,
+          },
+          estado_resultados: {
+            ventas:             yearData.ventas,
+            costos_venta:       yearData.costos_venta,
+            gastos_operacion:   yearData.gastos_operacion,
+            gastos_financieros: yearData.gastos_financieros,
+            otros_productos:    yearData.otros_productos,
+            otros_gastos:       yearData.otros_gastos,
+            impuestos:          yearData.impuestos,
+            depreciacion:       yearData.depreciacion,
+          },
+        }
+        console.log(`[Upload] ✅ Estado financiero extraído: periodo=${yearData.periodo}`)
+      } catch (err) {
+        console.error(`❌ [Upload] Error procesando estado financiero (${documentTypeId}):`, err.message)
+        textractError = `Error procesando estado financiero: ${err.message}`
       }
     } else {
       console.log(`[Upload] Documento tipo "${documentTypeId}", sin procesamiento OCR configurado`)
