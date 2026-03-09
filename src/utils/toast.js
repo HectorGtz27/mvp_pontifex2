@@ -55,6 +55,17 @@ const pontifexToast = {
     })
   },
   
+  warning: (message) => {
+    return toast(message, {
+      icon: '⚠️',
+      style: {
+        background: '#f59e0b',
+        color: '#fff',
+        fontWeight: '500',
+      },
+    })
+  },
+  
   promise: (promise, messages) => {
     return toast.promise(promise, messages, {
       success: {
@@ -114,6 +125,15 @@ export const showToast = {
   // Información
   info: (message) => 
     pontifexToast.info(message),
+  
+  warning: (message) =>
+    pontifexToast.warning(message),
+  
+  // Advertencia específica para conflictos de meses en estados de cuenta
+  monthConflict: (mesNombre, años) => {
+    const añosStr = años.join(', ')
+    return pontifexToast.warning(`⚠️ ${mesNombre}: Ya existe ${mesNombre} ${añosStr.replace(/, ([^,]*)$/, ' y $1')}`)
+  },
   
   // Para operaciones asíncronas
   promise: (promise, options = {}) => {

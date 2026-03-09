@@ -170,11 +170,15 @@ export async function buildMasterClientWorkbook(formData, extracted, bankStateme
         const banks = Object.keys(groups)
 
         // Build year map: monthNum → year (from statement mes "YYYY-MM")
+        // ⚠️ WARNING: Si hay múltiples statements del mismo mes con años diferentes,
+        // solo el ÚLTIMO año procesado aparecerá en columna B. Esto es una limitación
+        // del diseño de la plantilla (un año por mes). El frontend debe advertir al
+        // usuario sobre conflictos antes de generar el Excel.
         const yearByMonth = {}
         stmts.forEach((s) => {
           const m = mesToMonthNumber(s.mes)
           const yearMatch = s.mes && s.mes.match(/(\d{4})/)
-          if (m && yearMatch) yearByMonth[m] = parseInt(yearMatch[1], 10)
+          if (m && yearMatch) yearByMonth[m] = parseInt(yearMatch[1], 10)  // SOBRESCRIBE si existe
         })
         // Fill B column (year) for data rows
         for (let mo = 1; mo <= 12; mo++) {
@@ -325,6 +329,52 @@ function mesToMonthNumber(mes) {
     if (lower.includes(key)) return num
   }
   return null
+}
+
+/**
+ * Detecta conflictos en bankStatements: meses que aparecen con múltiples años.
+ * Útil para advertir al usuario antes de generar el Excel, ya que solo un año
+ * por mes puede aparecer en la columna B de la hoja "Flujos".
+ * 
+ * @param {Array} bankStatements - Array de objetos { mes: "YYYY-MM", divisa, ... }
+ * @returns {Array} - Array de conflictos: [{ mesNum, mesNombre, años: [...], divisa }, ...]
+ */
+export function detectMonthConflicts(bankStatements) {
+  const MESES_NOMBRES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+  const conflicts = []
+  
+  // Separar por divisa (MXN y USD se escriben en diferentes secciones)
+  const mxnStmts = bankStatements.filter(s => !s.divisa || s.divisa === 'MXN')
+  const usdStmts = bankStatements.filter(s => s.divisa === 'USD')
+  
+  const checkConflicts = (stmts, divisaLabel) => {
+    const monthMap = {} // { mesNum: Set([año1, año2, ...]) }
+    
+    stmts.forEach(s => {
+      if (!s.mes || !s.mes.match(/^\d{4}-\d{2}$/)) return
+      const [año, mes] = s.mes.split('-')
+      const mesNum = parseInt(mes, 10)
+      
+      if (!monthMap[mesNum]) monthMap[mesNum] = new Set()
+      monthMap[mesNum].add(año)
+    })
+    
+    Object.entries(monthMap).forEach(([mesNum, años]) => {
+      if (años.size > 1) {
+        conflicts.push({
+          mesNum: parseInt(mesNum),
+          mesNombre: MESES_NOMBRES[parseInt(mesNum) - 1],
+          años: Array.from(años).sort(),
+          divisa: divisaLabel
+        })
+      }
+    })
+  }
+  
+  checkConflicts(mxnStmts, 'MXN')
+  checkConflicts(usdStmts, 'USD')
+  
+  return conflicts
 }
 
 /**

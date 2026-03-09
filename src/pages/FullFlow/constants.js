@@ -49,6 +49,7 @@ export const INITIAL_FORM = {
   nivelVentasAnuales: '',
   margenRealUtilidad: '',
   situacionBuroCredito: '',
+  nivelBuroCredito: '',
   notas: '',
 }
 

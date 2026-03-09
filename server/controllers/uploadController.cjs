@@ -8,6 +8,20 @@ const { extractBankStatementData, extractCSFData, extractFinancialStatementsData
 const { extractFirstPage } = require('../services/pdfService.cjs')
 const { createDocumento } = require('../services/documentoService.cjs')
 const { processDocumentoCampos } = require('../services/campoExtraidoService.cjs')
+const prisma = require('../prisma.cjs')
+
+// ── Helper: Nombres de meses en español ──
+const MESES_ES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+
+/**
+ * Convierte número de mes (1-12 o "01"-"12") a nombre en español
+ * @param {string|number} mesNum - Número del mes (1-12)
+ * @returns {string} - Nombre del mes ("Enero", "Febrero", etc.)
+ */
+function getMesNombre(mesNum) {
+  const num = typeof mesNum === 'string' ? parseInt(mesNum, 10) : mesNum
+  return MESES_ES[num - 1] || 'Desconocido'
+}
 
 async function uploadFile(req, res) {
   try {
@@ -123,6 +137,61 @@ async function uploadFile(req, res) {
           ...(bedrockResult.parseError && { error_parseo: bedrockResult.parseError }),
         }
         console.log('[Upload] ✅ Estado de cuenta procesado:', extractedData)
+
+        // ── Detección de conflictos: Verificar si ya existe el mismo mes con año diferente ──
+        if (solicitudId && extractedData.mes && extractedData.mes.match(/^\d{4}-\d{2}$/)) {
+          try {
+            const [añoNuevo, mesNum] = extractedData.mes.split('-')
+            
+            // Buscar todos los estados de cuenta existentes en esta solicitud
+            const existingDocs = await prisma.documento.findMany({
+              where: {
+                solicitud_id: solicitudId,
+                tipo_documento_id: { in: ['edos_cuenta_bancarios', 'estado_cuenta_bancario'] },
+              },
+              include: { estado_cuenta: true },
+            })
+
+            // Filtrar conflictos: mismo mes, año diferente, misma divisa (o sin divisa)
+            const conflictos = existingDocs.filter(doc => {
+              if (!doc.estado_cuenta?.periodo) return false
+              const [año, mes] = doc.estado_cuenta.periodo.split('-')
+              
+              // Mismo mes, año diferente
+              if (mes !== mesNum || año === añoNuevo) return false
+              
+              // Verificar divisa: solo es conflicto si coincide la divisa o no está definida
+              const divisaDoc = doc.extracted_data?.divisa || null
+              const divisaNueva = extractedData.divisa || null
+              
+              // Si ambas tienen divisa, deben coincidir para ser conflicto
+              if (divisaDoc && divisaNueva) {
+                return divisaDoc === divisaNueva
+              }
+              
+              // Si alguna no tiene divisa, considerarlo conflicto (por seguridad)
+              return true
+            })
+
+            if (conflictos.length > 0) {
+              const añosExistentes = conflictos.map(c => c.estado_cuenta.periodo.split('-')[0])
+              const mesNombre = getMesNombre(mesNum)
+              
+              extractedData._warning = {
+                type: 'month_conflict',
+                mes: mesNum,
+                mesNombre,
+                añoNuevo,
+                añosExistentes,
+              }
+              
+              console.log(`[Upload] ⚠️ Conflicto detectado: ${mesNombre} ${añoNuevo} — Ya existe: ${añosExistentes.join(', ')}`)
+            }
+          } catch (conflictErr) {
+            console.error('[Upload] Error detectando conflictos de meses:', conflictErr.message)
+            // No fallar el upload por error en detección de conflictos
+          }
+        }
       } catch (err) {
         console.error('❌ [Upload] Error procesando estado de cuenta:', err.message)
         textractError = `Error procesando estado de cuenta: ${err.message}`

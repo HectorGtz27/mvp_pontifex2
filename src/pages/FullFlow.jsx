@@ -71,6 +71,7 @@ const INITIAL_FORM = {
   nivelVentasAnuales: '',
   margenRealUtilidad: '',
   situacionBuroCredito: '',
+  nivelBuroCredito: '',
   notas: '',
 }
 
@@ -197,6 +198,7 @@ export default function FullFlow() {
             nivelVentasAnuales: sol.nivelVentasAnuales || '',
             margenRealUtilidad: sol.margenRealUtilidad || '',
             situacionBuroCredito: sol.situacionBuroCredito || '',
+            nivelBuroCredito: sol.nivelBuroCredito || '',
             notas: sol.notas || '',
           })
           setClienteId(sol.clienteId)
@@ -301,6 +303,7 @@ export default function FullFlow() {
         nivelVentasAnuales: formData.nivelVentasAnuales ? Number(formData.nivelVentasAnuales) : null,
         margenRealUtilidad: formData.margenRealUtilidad ? Number(formData.margenRealUtilidad) : null,
         situacionBuroCredito: formData.situacionBuroCredito || null,
+        nivelBuroCredito: formData.nivelBuroCredito || null,
         notas: formData.notas || null,
       })
       setSolicitudId(sol.id)
@@ -874,7 +877,15 @@ export default function FullFlow() {
 
               <div>
                 <label htmlFor="tipoColateral" className="block text-sm font-medium text-slate-700 mb-1">Tipo de colateral</label>
-                <input id="tipoColateral" type="text" value={formData.tipoColateral} onChange={(e) => updateForm('tipoColateral', e.target.value)} placeholder="Ej. Inmueble, aval personal, garantía líquida" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500" />
+                <select id="tipoColateral" value={formData.tipoColateral} onChange={(e) => updateForm('tipoColateral', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500">
+                  <option value="">Seleccionar</option>
+                  <option value="AVAL / OBLIGADO SOLIDARIO">AVAL / OBLIGADO SOLIDARIO</option>
+                  <option value="RELACIÓN PATRIMONIAL">RELACIÓN PATRIMONIAL</option>
+                  <option value="HIPOTECARIA">HIPOTECARIA</option>
+                  <option value="PRENDARIA">PRENDARIA</option>
+                  <option value="LIQUIDA">LIQUIDA</option>
+                  <option value="CONTRATOS">CONTRATOS</option>
+                </select>
               </div>
             </div>
 
@@ -882,7 +893,7 @@ export default function FullFlow() {
             <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
               <h2 className="text-lg font-semibold text-slate-800 border-b border-slate-100 pb-2">Información cuantitativa</h2>
 
-              <div className="grid sm:grid-cols-3 gap-5">
+              <div className="grid sm:grid-cols-2 gap-5">
                 <div>
                   <label htmlFor="nivelVentasAnuales" className="block text-sm font-medium text-slate-700 mb-1">Nivel de ventas anuales</label>
                   <input id="nivelVentasAnuales" type="number" min="0" value={formData.nivelVentasAnuales} onChange={(e) => updateForm('nivelVentasAnuales', e.target.value)} placeholder="Ej. 5000000" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500" />
@@ -891,6 +902,9 @@ export default function FullFlow() {
                   <label htmlFor="margenRealUtilidad" className="block text-sm font-medium text-slate-700 mb-1">Margen real de utilidad (%)</label>
                   <input id="margenRealUtilidad" type="number" step="0.01" min="0" max="100" value={formData.margenRealUtilidad} onChange={(e) => updateForm('margenRealUtilidad', e.target.value)} placeholder="Ej. 12.5" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500" />
                 </div>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-5">
                 <div>
                   <label htmlFor="situacionBuroCredito" className="block text-sm font-medium text-slate-700 mb-1">Situación buró de crédito</label>
                   <select id="situacionBuroCredito" value={formData.situacionBuroCredito} onChange={(e) => updateForm('situacionBuroCredito', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500">
@@ -901,6 +915,10 @@ export default function FullFlow() {
                     <option value="cartera_vencida">Cartera vencida (90+ días)</option>
                     <option value="sin_historial">Sin historial</option>
                   </select>
+                </div>
+                <div>
+                  <label htmlFor="nivelBuroCredito" className="block text-sm font-medium text-slate-700 mb-1">Nivel del buró de crédito</label>
+                  <input id="nivelBuroCredito" type="text" value={formData.nivelBuroCredito} onChange={(e) => updateForm('nivelBuroCredito', e.target.value)} placeholder="Ej. 650, Excelente, AAA" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500" />
                 </div>
               </div>
 

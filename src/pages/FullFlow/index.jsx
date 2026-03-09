@@ -139,6 +139,7 @@ export default function FullFlow() {
             nivelVentasAnuales: sol.nivelVentasAnuales || '',
             margenRealUtilidad: sol.margenRealUtilidad || '',
             situacionBuroCredito: sol.situacionBuroCredito || '',
+            nivelBuroCredito: sol.nivelBuroCredito || '',
             notas: sol.notas || '',
           })
           setClienteId(sol.clienteId)
@@ -229,6 +230,7 @@ export default function FullFlow() {
         nivelVentasAnuales: formData.nivelVentasAnuales ? Number(formData.nivelVentasAnuales) : null,
         margenRealUtilidad: formData.margenRealUtilidad ? Number(formData.margenRealUtilidad) : null,
         situacionBuroCredito: formData.situacionBuroCredito || null,
+        nivelBuroCredito: formData.nivelBuroCredito || null,
         notas: formData.notas || null,
       })
       setSolicitudId(sol.id)
@@ -488,6 +490,13 @@ export default function FullFlow() {
       setCuentasBancarias(updated)
       data.results.forEach(r => {
         if (r.success && r.extractedData?.mes) {
+          // ── Detectar y mostrar warning de conflicto de meses ──
+          if (r.extractedData._warning?.type === 'month_conflict') {
+            const w = r.extractedData._warning
+            const añosTodos = [w.añoNuevo, ...w.añosExistentes]
+            showToast.monthConflict(w.mesNombre, añosTodos)
+          }
+          
           setBankStatements(prev => {
             const filtered = prev.filter(b => !(b.mes === r.extractedData.mes && b.banco_detectado === r.extractedData.banco_detectado))
             return [...filtered, {
@@ -723,6 +732,50 @@ export default function FullFlow() {
                               .map(d => ({ mes: d.periodo, abonos: d.abonos, retiros: d.retiros, saldo_promedio: d.saldoPromedio, divisa: d.divisa || cuenta.divisa, banco_detectado: d.banco || cuenta.banco }))
                           )
                         : bankStatements
+                      
+                      // ── Detectar conflictos de meses antes de generar Excel ──
+                      const conflictos = []
+                      const MESES_NOMBRES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+                      if (bankStatementsForExcel.length > 0) {
+                        const mxnStmts = bankStatementsForExcel.filter(s => !s.divisa || s.divisa === 'MXN')
+                        const usdStmts = bankStatementsForExcel.filter(s => s.divisa === 'USD')
+                        
+                        const checkConflicts = (stmts, divisaLabel) => {
+                          const monthMap = {}
+                          stmts.forEach(s => {
+                            if (!s.mes || !s.mes.match(/^\d{4}-\d{2}$/)) return
+                            const [año, mes] = s.mes.split('-')
+                            const mesNum = parseInt(mes, 10)
+                            if (!monthMap[mesNum]) monthMap[mesNum] = new Set()
+                            monthMap[mesNum].add(año)
+                          })
+                          
+                          Object.entries(monthMap).forEach(([mesNum, años]) => {
+                            if (años.size > 1) {
+                              conflictos.push({
+                                mesNombre: MESES_NOMBRES[parseInt(mesNum) - 1],
+                                años: Array.from(años).sort(),
+                                divisa: divisaLabel
+                              })
+                            }
+                          })
+                        }
+                        
+                        checkConflicts(mxnStmts, 'MXN')
+                        checkConflicts(usdStmts, 'USD')
+                      }
+                      
+                      // Si hay conflictos, mostrar modal de confirmación
+                      if (conflictos.length > 0) {
+                        const mensaje = `⚠️ ADVERTENCIA: Meses con años diferentes\n\n` +
+                          conflictos.map(c => `• ${c.mesNombre} (${c.divisa}): ${c.años.join(', ')}`).join('\n') +
+                          `\n\nEn el Excel solo aparecerá el año del último documento procesado para cada mes.\n\n¿Continuar de todos modos?`
+                        
+                        if (!window.confirm(mensaje)) {
+                          return // Usuario canceló
+                        }
+                      }
+                      
                       let financialYearsForExcel = [fsYear1.data, fsYear2.data, fsYear3.data].filter(Boolean)
                       if (financialYearsForExcel.length === 0 && solicitudId) {
                         try {
@@ -918,9 +971,36 @@ export default function FullFlow() {
                             {last12.map(periodo => {
                               const [yr, mo] = periodo.split('-')
                               const covered = mesSet.has(periodo)
+                              
+                              // ── Detectar conflictos: múltiples documentos del mismo mes (diferentes años) ──
+                              const docsDelMes = cuenta.documentos?.filter(d => {
+                                if (!d.periodo) return false
+                                const [docYear, docMonth] = d.periodo.split('-')
+                                return docMonth === mo
+                              }) || []
+                              
+                              const añosDelMes = [...new Set(docsDelMes.map(d => d.periodo.split('-')[0]))]
+                              const hasConflict = añosDelMes.length > 1
+                              const tooltip = hasConflict 
+                                ? `${MESES_CORTOS[parseInt(mo)-1]} — ⚠️ Años: ${añosDelMes.join(', ')}`
+                                : `${MESES_CORTOS[parseInt(mo)-1]} ${yr}${covered ? ' — subido' : ' — faltante'}`
+                              
                               return (
-                                <div key={periodo} title={`${MESES_CORTOS[parseInt(mo)-1]} ${yr}${covered ? ' — subido' : ' — faltante'}`} className={`w-10 h-8 rounded flex flex-col items-center justify-center text-xs font-medium ${covered ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
-                                  <span>{MESES_CORTOS[parseInt(mo)-1]}</span>
+                                <div 
+                                  key={periodo} 
+                                  title={tooltip} 
+                                  className={`w-10 h-8 rounded flex flex-col items-center justify-center text-xs font-medium ${
+                                    hasConflict 
+                                      ? 'bg-amber-100 text-amber-700 border-2 border-amber-500' 
+                                      : covered 
+                                        ? 'bg-emerald-100 text-emerald-700' 
+                                        : 'bg-slate-100 text-slate-400'
+                                  }`}
+                                >
+                                  <span className="flex items-center gap-0.5">
+                                    {hasConflict && <span className="text-[10px]">⚠️</span>}
+                                    {MESES_CORTOS[parseInt(mo)-1]}
+                                  </span>
                                   <span className="text-[10px]">{yr.slice(2)}</span>
                                 </div>
                               )

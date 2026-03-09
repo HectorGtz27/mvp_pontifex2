@@ -56,6 +56,7 @@ model Solicitud {
   nivel_ventas_anuales   Decimal? @db.Decimal(15, 2)
   margen_real_utilidad   Decimal? @db.Decimal(5, 2)
   situacion_buro_credito String?  @db.VarChar(200)
+  nivel_buro_credito     String?  @db.VarChar(50)
   // ── Estatus y progreso ──
   estatus                String   @default("borrador") @db.VarChar(30)
   docs_total             Int      @default(0)
