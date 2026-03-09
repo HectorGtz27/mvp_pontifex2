@@ -14,16 +14,18 @@ import {
   createCuentaBancaria,
   deleteCuentaBancaria,
 } from '../../utils/api'
-import { downloadMasterClientXlsx } from '../../utils/masterClientXlsx'
-import { BG_FIELDS, ER_FIELDS } from '../../shared/ocrFields'
 import showToast from '../../utils/toast'
 
 import {
-  STEPS, INITIAL_FORM, BANCOS_MX, MESES_CORTOS,
-  FS_TYPE_IDS, FS_LABELS, FS_LABELS_SHORT, getLast12Months,
+  STEPS, INITIAL_FORM,
+  FS_TYPE_IDS, FS_LABELS,
 } from './constants'
 import StepForm from './StepForm'
 import StepEvaluation from './StepEvaluation'
+import DocumentChecklist from './DocumentChecklist'
+import BankStatements from './BankStatements'
+import FinancialStatementsPanel from './FinancialStatementsPanel'
+import SpreadsheetView from './SpreadsheetView'
 
 export default function FullFlow() {
   const location = useLocation()
@@ -80,6 +82,7 @@ export default function FullFlow() {
   // ── Load documents when entering documents step ──
   useEffect(() => {
     if (solicitudId && currentStep === 1) {
+      // Cargar documentos
       fetch(`/api/solicitudes/${solicitudId}/documents`)
         .then(res => res.ok ? res.json() : [])
         .then(docs => {
@@ -104,6 +107,11 @@ export default function FullFlow() {
           })
         })
         .catch(err => console.error('Error loading documents:', err))
+      
+      // Cargar cuentas bancarias
+      fetchCuentasBancarias(solicitudId)
+        .then(cuentas => setCuentasBancarias(cuentas))
+        .catch(err => console.error('Error loading bank accounts:', err))
     }
   }, [solicitudId, currentStep])
 
@@ -168,6 +176,10 @@ export default function FullFlow() {
                 }
               })
             }
+            
+            // Cargar cuentas bancarias
+            const cuentas = await fetchCuentasBancarias(solicitudIdFromState)
+            setCuentasBancarias(cuentas)
           } catch (err) {
             console.error('Error loading documents:', err)
           }
@@ -324,6 +336,31 @@ export default function FullFlow() {
       }
     }
     setDocSubStep('upload')
+  }
+
+  // ── View document details (read-only) ──
+  const handleViewDocumentDetails = async (doc) => {
+    setSelectedDocType(doc)
+    setExtractedFields(null)
+    const docInfo = docStatus(doc.id)
+    if (docInfo.documentoId && solicitudId) {
+      try {
+        const res = await fetch(`/api/solicitudes/${solicitudId}/documents`)
+        if (res.ok) {
+          const docs = await res.json()
+          const currentDoc = docs.find(d => d.id === docInfo.documentoId)
+          if (currentDoc && currentDoc.extractedData) {
+            setExtractedFields(currentDoc.extractedData)
+            setDocSubStep('extraction')
+          } else {
+            showToast.info('Este documento no tiene datos extraídos.')
+          }
+        }
+      } catch (err) {
+        console.error('Error loading document details:', err)
+        showToast.error('Error al cargar los detalles del documento')
+      }
+    }
   }
 
   const handleFileUpload = async (file) => {
@@ -595,231 +632,33 @@ export default function FullFlow() {
 
           {docSubStep === 'checklist' && !showFsPanel && (
             <>
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                  <span className="font-medium text-slate-800">Solicitud — {formData.razonSocial || 'Solicitante'}</span>
-                  <span className="text-sm text-slate-600">
-                    {Object.values(uploadedDocs).filter(d => d.status === 'validated').length}/{documentTypes.reduce((acc, cat) => acc + (cat.tipos?.length || 0), 0)} validados
-                  </span>
-                </div>
-                {documentTypes.map((categoria) => (
-                  <div key={categoria.id}>
-                    <div className="px-4 py-2 bg-slate-100 border-b border-slate-200">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">{categoria.nombre}</span>
-                    </div>
-                    <ul className="divide-y divide-slate-100">
-                      {(categoria.tipos || []).map((doc) => {
-                        const s = docStatus(doc.id)
-                        if (doc.id === 'edos_financieros_anio2' || doc.id === 'edo_financiero_parcial') return null
-                        if (doc.id === 'edos_financieros_anio1') {
-                          const s1 = docStatus('edos_financieros_anio1')
-                          const s2 = docStatus('edos_financieros_anio2')
-                          const s3 = docStatus('edo_financiero_parcial')
-                          const allValidated = s1.status === 'validated' && s2.status === 'validated' && s3.status === 'validated'
-                          const anyValidated = s1.status === 'validated' || s2.status === 'validated' || s3.status === 'validated'
-                          const anyFsUploading = fsYear1.uploading || fsYear2.uploading || fsYear3.uploading
-                          return (
-                            <li key="fs-unified" className="px-4 py-3 hover:bg-slate-50/50">
-                              <div className="flex items-center gap-4">
-                                <span className="w-6">
-                                  {allValidated && <span className="text-emerald-500">✓</span>}
-                                  {!allValidated && anyValidated && <span className="text-amber-500">◐</span>}
-                                  {!allValidated && !anyValidated && <span className="text-slate-300">○</span>}
-                                </span>
-                                <span className="flex-1 text-slate-800 font-medium">
-                                  Estados Financieros
-                                  <span className="ml-2 text-xs font-normal text-slate-500">(hasta 3 PDFs — 1 por ejercicio fiscal)</span>
-                                </span>
-                                {anyValidated && !anyFsUploading && (
-                                  <span className="text-sm text-slate-500">{[s1, s2, s3].filter(s => s.status === 'validated').length}/3 subidos</span>
-                                )}
-                                {anyFsUploading ? (
-                                  <span className="text-sm text-pontifex-600 flex items-center gap-1">
-                                    <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
-                                    Analizando…
-                                  </span>
-                                ) : (
-                                  <button type="button" onClick={() => setShowFsPanel(true)} className="text-sm font-medium text-pontifex-600 hover:text-pontifex-700">
-                                    {anyValidated ? 'Agregar / reemplazar' : 'Subir (1–3 PDFs)'}
-                                  </button>
-                                )}
-                              </div>
-                              <div className="mt-2 ml-10 space-y-1">
-                                {FS_TYPE_IDS.map((tid, i) => {
-                                  const st = docStatus(tid)
-                                  const yr = [fsYear1.data, fsYear2.data, fsYear3.data][i]
-                                  return (
-                                    <div key={tid} className="flex items-center gap-2 text-xs text-slate-500">
-                                      <span className={st.status === 'validated' ? 'text-emerald-500' : 'text-slate-300'}>{st.status === 'validated' ? '✓' : '○'}</span>
-                                      <span>{FS_LABELS[i]}</span>
-                                      {st.fileName && <span className="font-mono text-slate-400">{st.fileName}</span>}
-                                      {yr?.periodo && (
-                                        <span className="ml-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                          {yr.periodo}{yr.estado_resultados?.ventas != null && ` · Ventas: ${Number(yr.estado_resultados.ventas).toLocaleString()}`}
-                                        </span>
-                                      )}
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                            </li>
-                          )
-                        }
-                        return (
-                          <li key={doc.id} className="flex items-center gap-4 px-4 py-3 hover:bg-slate-50/50">
-                            <span className="w-6">
-                              {s.status === 'validated' && <span className="text-emerald-500">✓</span>}
-                              {s.status === 'pending_review' && <span className="text-amber-500">◐</span>}
-                              {s.status === 'pending' && <span className="text-slate-300">○</span>}
-                            </span>
-                            <span className="flex-1 text-slate-800">{doc.label}</span>
-                            {s.fileName && <span className="text-sm text-slate-500 font-mono">{s.fileName}</span>}
-                            {doc.id === 'edos_cuenta_bancarios' ? (
-                              <button type="button" onClick={handleOpenBankStatements} className="text-sm font-medium text-pontifex-600 hover:text-pontifex-700">
-                                Gestionar {cuentasBancarias.length > 0 ? `(${cuentasBancarias.length} cuenta${cuentasBancarias.length !== 1 ? 's' : ''})` : ''}
-                              </button>
-                            ) : (
-                              <button type="button" onClick={() => handleSelectDocumentToReplace(doc)} className="text-sm font-medium text-pontifex-600 hover:text-pontifex-700">
-                                {s.status === 'pending' ? 'Subir' : 'Reemplazar'}
-                              </button>
-                            )}
-                          </li>
-                        )
-                      })}
-                    </ul>
-                  </div>
-                ))}
-              </div>
+              <DocumentChecklist
+                formData={formData}
+                documentTypes={documentTypes}
+                uploadedDocs={uploadedDocs}
+                cuentasBancarias={cuentasBancarias}
+                fsYear1={fsYear1}
+                fsYear2={fsYear2}
+                fsYear3={fsYear3}
+                docStatus={docStatus}
+                onSelectDocumentToReplace={handleSelectDocumentToReplace}
+                onViewDocumentDetails={handleViewDocumentDetails}
+                onShowFsPanel={() => setShowFsPanel(true)}
+                onOpenBankStatements={handleOpenBankStatements}
+              />
 
               {/* Spreadsheet: key values extracted via OCR */}
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-wrap gap-2">
-                  <div>
-                    <h2 className="font-semibold text-slate-800">Valores clave extraídos (OCR)</h2>
-                    <p className="text-xs text-slate-500 mt-0.5">Datos obtenidos de los documentos subidos; puedes descargar la hoja de cálculo.</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const baseName = formData.razonSocial?.replace(/\s+/g, '_') || 'solicitud'
-                      let extractedFields = []
-                      let cuentasData = cuentasBancarias
-                      if (solicitudId && cuentasData.length === 0) {
-                        try { cuentasData = await fetchCuentasBancarias(solicitudId); setCuentasBancarias(cuentasData) } catch (_) {}
-                      }
-                      if (solicitudId) {
-                        try {
-                          const res = await fetch(`/api/solicitudes/${solicitudId}/documents`)
-                          if (res.ok) {
-                            const docs = await res.json()
-                            docs.forEach(doc => {
-                              if (doc.extractedData) {
-                                Object.entries(doc.extractedData).forEach(([key, value]) => {
-                                  if (key !== '_extra' && value) {
-                                    extractedFields.push({ documento: doc.tipoDocumentoLabel, campo: key, valor: value, fuente: 'Textract' })
-                                  }
-                                })
-                              }
-                            })
-                          }
-                        } catch (err) { console.error('Error loading documents:', err) }
-                      }
-                      const dataToUse = extractedFields.length > 0 ? extractedFields : spreadsheetData
-                      const bankStatementsForExcel = cuentasData.length > 0
-                        ? cuentasData.flatMap(cuenta =>
-                            cuenta.documentos
-                              .filter(d => d.abonos != null || d.retiros != null || d.saldoPromedio != null)
-                              .map(d => ({ mes: d.periodo, abonos: d.abonos, retiros: d.retiros, saldo_promedio: d.saldoPromedio, divisa: d.divisa || cuenta.divisa, banco_detectado: d.banco || cuenta.banco }))
-                          )
-                        : bankStatements
-                      
-                      // ── Detectar conflictos de meses antes de generar Excel ──
-                      const conflictos = []
-                      const MESES_NOMBRES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
-                      if (bankStatementsForExcel.length > 0) {
-                        const mxnStmts = bankStatementsForExcel.filter(s => !s.divisa || s.divisa === 'MXN')
-                        const usdStmts = bankStatementsForExcel.filter(s => s.divisa === 'USD')
-                        
-                        const checkConflicts = (stmts, divisaLabel) => {
-                          const monthMap = {}
-                          stmts.forEach(s => {
-                            if (!s.mes || !s.mes.match(/^\d{4}-\d{2}$/)) return
-                            const [año, mes] = s.mes.split('-')
-                            const mesNum = parseInt(mes, 10)
-                            if (!monthMap[mesNum]) monthMap[mesNum] = new Set()
-                            monthMap[mesNum].add(año)
-                          })
-                          
-                          Object.entries(monthMap).forEach(([mesNum, años]) => {
-                            if (años.size > 1) {
-                              conflictos.push({
-                                mesNombre: MESES_NOMBRES[parseInt(mesNum) - 1],
-                                años: Array.from(años).sort(),
-                                divisa: divisaLabel
-                              })
-                            }
-                          })
-                        }
-                        
-                        checkConflicts(mxnStmts, 'MXN')
-                        checkConflicts(usdStmts, 'USD')
-                      }
-                      
-                      // Si hay conflictos, mostrar modal de confirmación
-                      if (conflictos.length > 0) {
-                        const mensaje = `⚠️ ADVERTENCIA: Meses con años diferentes\n\n` +
-                          conflictos.map(c => `• ${c.mesNombre} (${c.divisa}): ${c.años.join(', ')}`).join('\n') +
-                          `\n\nEn el Excel solo aparecerá el año del último documento procesado para cada mes.\n\n¿Continuar de todos modos?`
-                        
-                        if (!window.confirm(mensaje)) {
-                          return // Usuario canceló
-                        }
-                      }
-                      
-                      let financialYearsForExcel = [fsYear1.data, fsYear2.data, fsYear3.data].filter(Boolean)
-                      if (financialYearsForExcel.length === 0 && solicitudId) {
-                        try {
-                          const docsRes = await fetch(`/api/solicitudes/${solicitudId}/documents`)
-                          if (docsRes.ok) {
-                            const allDocs = await docsRes.json()
-                            const typeOrder = ['edos_financieros_anio1', 'edos_financieros_anio2', 'edo_financiero_parcial']
-                            for (const tid of typeOrder) {
-                              const d = allDocs.find(x => x.tipoDocumentoId === tid)
-                              if (d?.extractedData?.tipo === 'estados_financieros') financialYearsForExcel.push(d.extractedData)
-                            }
-                          }
-                        } catch (_) {}
-                      }
-                      await downloadMasterClientXlsx(formData, dataToUse, `master_client_pontifex_${baseName}.xlsx`, bankStatementsForExcel, financialYearsForExcel)
-                    }}
-                    className="px-3 py-2 rounded-lg border border-pontifex-200 bg-pontifex-50 text-pontifex-700 text-sm font-medium hover:bg-pontifex-100"
-                  >
-                    Descargar master_client_pontifex.xlsx
-                  </button>
-                </div>
-                <div className="overflow-x-auto max-h-64 overflow-y-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-50 sticky top-0">
-                      <tr className="text-left text-slate-600 border-b border-slate-200">
-                        <th className="px-4 py-2 font-medium">Documento</th>
-                        <th className="px-4 py-2 font-medium">Campo</th>
-                        <th className="px-4 py-2 font-medium">Valor</th>
-                        <th className="px-4 py-2 font-medium">Fuente</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {spreadsheetData.map((row, i) => (
-                        <tr key={i} className="border-b border-slate-100 hover:bg-slate-50/50">
-                          <td className="px-4 py-2 text-slate-800">{row.documento}</td>
-                          <td className="px-4 py-2 text-slate-700">{row.campo}</td>
-                          <td className="px-4 py-2 font-mono text-slate-800">{row.valor}</td>
-                          <td className="px-4 py-2 text-slate-500">{row.fuente}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              <SpreadsheetView
+                formData={formData}
+                spreadsheetData={spreadsheetData}
+                solicitudId={solicitudId}
+                cuentasBancarias={cuentasBancarias}
+                setCuentasBancarias={setCuentasBancarias}
+                bankStatements={bankStatements}
+                fsYear1={fsYear1}
+                fsYear2={fsYear2}
+                fsYear3={fsYear3}
+              />
 
               <div className="flex justify-end">
                 <button type="button" onClick={() => { setDocumentsComplete(true); setCurrentStep(2); loadDashboardData(solicitudId) }} className="px-5 py-2.5 bg-pontifex-600 text-white rounded-lg font-medium hover:bg-pontifex-700">
@@ -831,259 +670,36 @@ export default function FullFlow() {
 
           {/* ── Estados Financieros Panel ── */}
           {docSubStep === 'checklist' && showFsPanel && (
-            <div ref={fsPanelRef} className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="font-semibold text-slate-900 text-lg">Estados Financieros</h2>
-                  <p className="text-sm text-slate-500 mt-0.5">Sube 1 PDF por ejercicio fiscal. Los datos se extraen automáticamente con OCR + IA.</p>
-                </div>
-                <button type="button" onClick={() => setShowFsPanel(false)} className="text-sm text-slate-500 hover:text-slate-700">← Volver al listado</button>
-              </div>
-
-              {[
-                { state: fsYear1, setState: setFsYear1, ref: fsRef1, index: 0 },
-                { state: fsYear2, setState: setFsYear2, ref: fsRef2, index: 1 },
-                { state: fsYear3, setState: setFsYear3, ref: fsRef3, index: 2 },
-              ].map(({ state, setState, ref, index }) => {
-                const typeId = FS_TYPE_IDS[index]
-                const label = FS_LABELS[index]
-                const shortLabel = FS_LABELS_SHORT[index]
-                const docSt = docStatus(typeId)
-                const isValidated = docSt.status === 'validated'
-                return (
-                  <div key={typeId} className="bg-slate-50 rounded-xl p-5 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className={`text-lg ${isValidated ? 'text-emerald-500' : 'text-slate-300'}`}>{isValidated ? '✓' : '○'}</span>
-                        <h3 className="font-semibold text-slate-900">{label}</h3>
-                        {state.data?.periodo && <span className="px-2 py-0.5 rounded bg-pontifex-100 text-pontifex-700 text-xs font-medium">{state.data.periodo}</span>}
-                      </div>
-                      {state.fileName && <span className="text-xs text-slate-500 font-mono">{state.fileName}</span>}
-                    </div>
-                    <div
-                      onDragOver={e => { e.preventDefault(); setState(prev => ({ ...prev, dragOver: true })) }}
-                      onDragLeave={() => setState(prev => ({ ...prev, dragOver: false }))}
-                      onDrop={e => { e.preventDefault(); setState(prev => ({ ...prev, dragOver: false })); const files = e.dataTransfer.files; if (files?.[0]) handleFinancialYearUpload(files[0], index) }}
-                      onClick={() => !state.uploading && ref.current?.click()}
-                      className={`rounded-lg border-2 border-dashed p-8 text-center transition-colors ${state.dragOver ? 'border-pontifex-400 bg-pontifex-50' : 'border-slate-300 bg-white hover:border-pontifex-300'} ${state.uploading ? 'pointer-events-none opacity-70' : 'cursor-pointer'}`}
-                    >
-                      {state.uploading ? (
-                        <div className="flex flex-col items-center gap-2 text-pontifex-600">
-                          <svg className="animate-spin h-7 w-7" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
-                          <p className="font-medium text-sm">Analizando {shortLabel}…</p>
-                          <p className="text-xs text-slate-500">Extrayendo con OCR + IA</p>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center gap-2 text-slate-500">
-                          <svg className="h-8 w-8 text-slate-300" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
-                          <p className="font-medium text-slate-700 text-sm">{state.data ? 'Reemplazar PDF' : `Subir PDF para ${shortLabel}`}</p>
-                          <p className="text-xs">Arrastra aquí o haz clic · hasta 30 MB</p>
-                        </div>
-                      )}
-                    </div>
-                    <input ref={ref} type="file" accept=".pdf" className="hidden" onChange={e => { const file = e.target.files?.[0]; if (file) handleFinancialYearUpload(file, index); e.target.value = '' }} />
-
-                    {state.data && (() => {
-                      const yr = state.data
-                      const fmt = v => v == null ? '—' : Number(v).toLocaleString('es-MX')
-                      return (
-                        <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-                          <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
-                            <span className="font-medium text-slate-800 text-xs">Información extraída</span>
-                            {yr.confianza && (
-                              <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${yr.confianza === 'alta' ? 'bg-emerald-100 text-emerald-700' : yr.confianza === 'media' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{yr.confianza}</span>
-                            )}
-                          </div>
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-xs">
-                              <tbody>
-                                <tr className="bg-blue-50 border-b border-slate-200"><td colSpan="2" className="px-3 py-1.5 font-bold uppercase tracking-wider text-blue-700">Balance General</td></tr>
-                                {BG_FIELDS.map(({ key, label }) => (
-                                  <tr key={key} className="border-b border-slate-100 hover:bg-slate-50/50">
-                                    <td className="px-3 py-2 text-slate-700">{label}</td>
-                                    <td className="px-3 py-2 text-right font-mono text-slate-800">{fmt((yr.balance_general || yr)[key])}</td>
-                                  </tr>
-                                ))}
-                                <tr className="bg-amber-50 border-b border-slate-200"><td colSpan="2" className="px-3 py-1.5 font-bold uppercase tracking-wider text-amber-700">Estado de Resultados</td></tr>
-                                {ER_FIELDS.map(({ key, label }) => (
-                                  <tr key={key} className="border-b border-slate-100 hover:bg-slate-50/50">
-                                    <td className="px-3 py-2 text-slate-700">{label}</td>
-                                    <td className="px-3 py-2 text-right font-mono text-slate-800">{fmt((yr.estado_resultados || yr)[key])}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      )
-                    })()}
-                  </div>
-                )
-              })}
-            </div>
+            <FinancialStatementsPanel
+              fsPanelRef={fsPanelRef}
+              fsYear1={fsYear1}
+              setFsYear1={setFsYear1}
+              fsRef1={fsRef1}
+              fsYear2={fsYear2}
+              setFsYear2={setFsYear2}
+              fsRef2={fsRef2}
+              fsYear3={fsYear3}
+              setFsYear3={setFsYear3}
+              fsRef3={fsRef3}
+              docStatus={docStatus}
+              onFinancialYearUpload={handleFinancialYearUpload}
+              onClose={() => setShowFsPanel(false)}
+            />
           )}
 
-          {docSubStep === 'bank-statements' && (() => {
-            const last12 = getLast12Months()
-            return (
-              <div className="space-y-5">
-                <div className="flex items-center justify-between">
-                  <h2 className="font-semibold text-slate-900 text-lg">Estados de cuenta bancarios</h2>
-                  <button type="button" onClick={() => setDocSubStep('checklist')} className="text-sm text-slate-500 hover:text-slate-700">← Volver al listado</button>
-                </div>
-
-                <div className="bg-white rounded-xl border border-slate-200 p-4">
-                  <p className="text-sm font-semibold text-slate-700 mb-3">Declarar nueva cuenta bancaria</p>
-                  <div className="flex flex-wrap gap-2 items-center">
-                    <select value={bsNewBanco} onChange={e => setBsNewBanco(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-pontifex-300">
-                      <option value="">Seleccionar banco…</option>
-                      {BANCOS_MX.map(b => <option key={b} value={b}>{b}</option>)}
-                    </select>
-                    <button type="button" onClick={handleAddCuenta} disabled={!bsNewBanco || bsAddingCuenta} className="px-4 py-2 rounded-lg bg-pontifex-600 text-white text-sm font-medium hover:bg-pontifex-700 disabled:opacity-40">
-                      {bsAddingCuenta ? 'Agregando…' : '+ Agregar cuenta'}
-                    </button>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-2">💡 La divisa (MXN/USD) se detecta automáticamente al procesar los estados de cuenta</p>
-                </div>
-
-                {cuentasBancarias.length === 0 && (
-                  <p className="text-center text-slate-500 text-sm py-8">Declara las cuentas bancarias para comenzar la carga de estados.</p>
-                )}
-
-                {cuentasBancarias.map(cuenta => {
-                  const bs = bsBulkState[cuenta.id] || {}
-                  const mesSet = new Set(cuenta.mesesCubiertos || [])
-                  const totalMeses = mesSet.size
-                  return (
-                    <div key={cuenta.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                      <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <span className="font-semibold text-slate-800">{cuenta.banco}</span>
-                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${cuenta.divisa === 'USD' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'}`}>{cuenta.divisa}</span>
-                          <span className="text-xs text-slate-500">{totalMeses}/12 meses</span>
-                        </div>
-                        <button type="button" onClick={() => handleDeleteCuenta(cuenta.id)} className="text-slate-400 hover:text-red-500 text-sm" title="Eliminar cuenta">✕</button>
-                      </div>
-                      <div className="p-4 space-y-4">
-                        <div>
-                          <p className="text-xs text-slate-500 mb-2">Cobertura (últimos 12 meses)</p>
-                          <div className="flex gap-1 flex-wrap">
-                            {last12.map(periodo => {
-                              const [yr, mo] = periodo.split('-')
-                              const covered = mesSet.has(periodo)
-                              
-                              // ── Detectar conflictos: múltiples documentos del mismo mes (diferentes años) ──
-                              const docsDelMes = cuenta.documentos?.filter(d => {
-                                if (!d.periodo) return false
-                                const [docYear, docMonth] = d.periodo.split('-')
-                                return docMonth === mo
-                              }) || []
-                              
-                              const añosDelMes = [...new Set(docsDelMes.map(d => d.periodo.split('-')[0]))]
-                              const hasConflict = añosDelMes.length > 1
-                              const tooltip = hasConflict 
-                                ? `${MESES_CORTOS[parseInt(mo)-1]} — ⚠️ Años: ${añosDelMes.join(', ')}`
-                                : `${MESES_CORTOS[parseInt(mo)-1]} ${yr}${covered ? ' — subido' : ' — faltante'}`
-                              
-                              return (
-                                <div 
-                                  key={periodo} 
-                                  title={tooltip} 
-                                  className={`w-10 h-8 rounded flex flex-col items-center justify-center text-xs font-medium ${
-                                    hasConflict 
-                                      ? 'bg-amber-100 text-amber-700 border-2 border-amber-500' 
-                                      : covered 
-                                        ? 'bg-emerald-100 text-emerald-700' 
-                                        : 'bg-slate-100 text-slate-400'
-                                  }`}
-                                >
-                                  <span className="flex items-center gap-0.5">
-                                    {hasConflict && <span className="text-[10px]">⚠️</span>}
-                                    {MESES_CORTOS[parseInt(mo)-1]}
-                                  </span>
-                                  <span className="text-[10px]">{yr.slice(2)}</span>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </div>
-
-                        {bs.uploading ? (
-                          <div className="space-y-1">
-                            <div className="flex justify-between text-xs text-slate-600"><span>Procesando…</span><span>{bs.progress?.done ?? 0}/{bs.progress?.total ?? '?'}</span></div>
-                            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                              <div className="h-2 bg-pontifex-500 rounded-full transition-all" style={{ width: `${bs.progress?.total ? (bs.progress.done / bs.progress.total) * 100 : 0}%` }} />
-                            </div>
-                          </div>
-                        ) : (
-                          <label className="flex items-center gap-3 px-4 py-3 rounded-lg border-2 border-dashed border-slate-200 hover:border-pontifex-400 hover:bg-pontifex-50 cursor-pointer transition-colors">
-                            <span className="text-2xl">📁</span>
-                            <div>
-                              <p className="text-sm font-medium text-slate-700">Seleccionar estados de cuenta</p>
-                              <p className="text-xs text-slate-500">Hasta 24 PDFs a la vez — se procesan automáticamente</p>
-                            </div>
-                            <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={e => handleBulkUpload(cuenta.id, e.target.files)} />
-                          </label>
-                        )}
-
-                        {bs.results && bs.results.length > 0 && (() => {
-                          const resultsMXN = bs.results.filter(r => r.success && r.extractedData?.divisa === 'MXN')
-                          const resultsUSD = bs.results.filter(r => r.success && r.extractedData?.divisa === 'USD')
-                          const resultsSinDivisa = bs.results.filter(r => r.success && !r.extractedData?.divisa)
-                          const resultsError = bs.results.filter(r => !r.success)
-                          const renderResultRow = (r, i) => (
-                            <div key={i} className={`flex flex-wrap items-center gap-2 text-xs px-3 py-1.5 rounded-lg ${r.success ? 'bg-white border border-slate-100' : 'bg-red-50'}`}>
-                              <span>{r.success ? '✅' : '❌'}</span>
-                              <span className="font-mono text-slate-700 truncate max-w-[180px]">{r.fileName}</span>
-                              {r.success && r.extractedData && (
-                                <>
-                                  {r.extractedData.mes && <span className="bg-slate-50 border border-slate-200 px-2 py-0.5 rounded text-slate-600">{r.extractedData.mes}</span>}
-                                  {r.extractedData.abonos != null && <span className="text-emerald-700">↑ {new Intl.NumberFormat('es-MX',{style:'currency',currency:r.extractedData.divisa||'MXN',maximumFractionDigits:0}).format(r.extractedData.abonos)}</span>}
-                                  {r.extractedData.retiros != null && <span className="text-red-600">↓ {new Intl.NumberFormat('es-MX',{style:'currency',currency:r.extractedData.divisa||'MXN',maximumFractionDigits:0}).format(r.extractedData.retiros)}</span>}
-                                  {r.extractedData.saldo_promedio != null && <span className="text-slate-600">∅ {new Intl.NumberFormat('es-MX',{style:'currency',currency:r.extractedData.divisa||'MXN',maximumFractionDigits:0}).format(r.extractedData.saldo_promedio)}</span>}
-                                  {r.extractedData.confianza && <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${r.extractedData.confianza === 'alta' ? 'bg-emerald-100 text-emerald-700' : r.extractedData.confianza === 'media' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{r.extractedData.confianza}</span>}
-                                </>
-                              )}
-                              {!r.success && <span className="text-red-600">{r.error}</span>}
-                            </div>
-                          )
-                          return (
-                            <div className="space-y-3">
-                              <p className="text-xs font-semibold text-slate-600">Resultados del lote ({bs.results.length} archivos):</p>
-                              {resultsMXN.length > 0 && (
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-2"><span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">MXN</span><span className="text-xs text-slate-500">{resultsMXN.length} estado(s) en pesos</span></div>
-                                  <div className="space-y-1 pl-2">{resultsMXN.map(renderResultRow)}</div>
-                                </div>
-                              )}
-                              {resultsUSD.length > 0 && (
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-2"><span className="text-xs font-bold px-2 py-0.5 rounded-full bg-sky-100 text-sky-700">USD</span><span className="text-xs text-slate-500">{resultsUSD.length} estado(s) en dólares</span></div>
-                                  <div className="space-y-1 pl-2">{resultsUSD.map(renderResultRow)}</div>
-                                </div>
-                              )}
-                              {resultsSinDivisa.length > 0 && (
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-2"><span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">⚠️ Sin divisa</span><span className="text-xs text-slate-500">{resultsSinDivisa.length} archivo(s)</span></div>
-                                  <div className="space-y-1 pl-2">{resultsSinDivisa.map(renderResultRow)}</div>
-                                </div>
-                              )}
-                              {resultsError.length > 0 && (
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-2"><span className="text-xs font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">❌ Errores</span><span className="text-xs text-slate-500">{resultsError.length} archivo(s)</span></div>
-                                  <div className="space-y-1 pl-2">{resultsError.map(renderResultRow)}</div>
-                                </div>
-                              )}
-                            </div>
-                          )
-                        })()}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )
-          })()}
+          {docSubStep === 'bank-statements' && (
+            <BankStatements
+              cuentasBancarias={cuentasBancarias}
+              bsNewBanco={bsNewBanco}
+              setBsNewBanco={setBsNewBanco}
+              bsAddingCuenta={bsAddingCuenta}
+              bsBulkState={bsBulkState}
+              onAddCuenta={handleAddCuenta}
+              onDeleteCuenta={handleDeleteCuenta}
+              onBulkUpload={handleBulkUpload}
+              onBack={() => setDocSubStep('checklist')}
+            />
+          )}
 
           {docSubStep === 'upload' && (
             <>
@@ -1252,12 +868,18 @@ export default function FullFlow() {
                   )}
                 </div>
                 <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
-                  <button type="button" onClick={() => { setDocSubStep('upload'); setExtractedFields(null) }} className="px-4 py-2 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-100">← Subir otro archivo</button>
+                  {uploadResult ? (
+                    <button type="button" onClick={() => { setDocSubStep('upload'); setExtractedFields(null) }} className="px-4 py-2 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-100">← Subir otro archivo</button>
+                  ) : (
+                    <button type="button" onClick={() => { setDocSubStep('checklist'); setExtractedFields(null) }} className="px-4 py-2 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-100">← Volver al listado</button>
+                  )}
                   <div className="flex gap-2">
-                    <button type="button" onClick={() => { setDocSubStep('checklist'); setExtractedFields(null) }} className="px-4 py-2 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-100">Cancelar</button>
-                    <button type="button" onClick={handleConfirmExtractedData} disabled={confirmingData} className="px-5 py-2 bg-pontifex-600 text-white rounded-lg font-medium hover:bg-pontifex-700 disabled:opacity-50 disabled:cursor-not-allowed">
-                      {confirmingData ? 'Confirmando...' : extractedFields?.tipo === 'estado_cuenta_bancario' ? '✓ Confirmar datos' : '✓ Confirmar y actualizar cliente'}
-                    </button>
+                    <button type="button" onClick={() => { setDocSubStep('checklist'); setExtractedFields(null) }} className="px-4 py-2 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-100">Cerrar</button>
+                    {uploadResult && (
+                      <button type="button" onClick={handleConfirmExtractedData} disabled={confirmingData} className="px-5 py-2 bg-pontifex-600 text-white rounded-lg font-medium hover:bg-pontifex-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                        {confirmingData ? 'Confirmando...' : extractedFields?.tipo === 'estado_cuenta_bancario' ? '✓ Confirmar datos' : '✓ Confirmar y actualizar cliente'}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

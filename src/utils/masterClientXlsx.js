@@ -223,10 +223,14 @@ export async function buildMasterClientWorkbook(formData, extracted, bankStateme
   if (financialYears && financialYears.length > 0) {
     const efSheet = workbook.getWorksheet('Estados Financieros')
     if (efSheet) {
-      // Columns B/D/F → years[0]/years[1]/years[2] (oldest to newest)
+      // Columns C/E/G → years[0]/years[1]/years[2]
+      // C = Antepenúltimo ejercicio, E = Penúltimo ejercicio, G = Ejercicio en curso
       const YEAR_COLS = ['C', 'E', 'G']
 
+      // Procesar cada año en su posición fija (puede ser null si no se subió)
       financialYears.slice(0, 3).forEach((yr, idx) => {
+        if (!yr) return  // Saltar posiciones vacías
+        
         const col = YEAR_COLS[idx]
         if (!col) return
 
