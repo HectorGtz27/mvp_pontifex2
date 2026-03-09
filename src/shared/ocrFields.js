@@ -39,6 +39,7 @@ export const ER_FIELDS = [
   { key: 'otros_gastos',       label: 'Otros Gastos' },
   { key: 'impuestos',          label: 'Impuestos' },
   { key: 'depreciacion',       label: 'Depreciación' },
+  { key: 'resultado_ejercicio', label: 'Resultado del Ejercicio' },
 ]
 
 /**

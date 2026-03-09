@@ -389,14 +389,16 @@ Estado de Resultados:
 - otros_gastos (Otros Gastos)
 - impuestos (ISR / Impuestos / Impuesto sobre la renta)
 - depreciacion (Depreciación / Amortización)
+- resultado_ejercicio (PORCENTAJE de margen neto / % del Resultado del Ejercicio sobre ventas. Si muestra "14.2%" extraer 14.2, si muestra "0.142" o sin símbolo % pero es decimal pequeño entonces multiplicar por 100)
 
 INSTRUCCIONES IMPORTANTES:
 - Identifica el período por el encabezado de columna (ej: "31/12/2019", "31/12/2020", "30/6/2021", "2019", "2020", "2021", "Dic 2019", etc.)
 - Para el campo "periodo": usa el año en formato "YYYY" o "YYYY-MM" si incluye mes/año (ej: "2019", "2021-06")
-- Los valores son SALDOS, no percentajes (ignora columnas de %)
+- Los valores son SALDOS, no porcentajes (ignora columnas de %), EXCEPTO "resultado_ejercicio" que debe ser el PORCENTAJE (columna de %)
 - Si el concepto no aparece o no puedes determinarlo, usa null
 - Ordena los años de más antiguo a más reciente
 - Los montos deben ser números sin comas, sin signos, sin texto (solo el valor numérico)
+- Para resultado_ejercicio: extraer el porcentaje como número decimal (ej: 14.2 para 14.2%, no 0.142)
 
 Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional, sin markdown:
 {
@@ -425,7 +427,8 @@ Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional, sin markdo
       "otros_productos": number_or_null,
       "otros_gastos": number_or_null,
       "impuestos": number_or_null,
-      "depreciacion": number_or_null
+      "depreciacion": number_or_null,
+      "resultado_ejercicio": number_or_null  (PORCENTAJE, ej: 14.2 para 14.2%)
     }
   ],
   "confianza": "alta|media|baja"

@@ -247,14 +247,15 @@ async function uploadFile(req, res) {
             utilidades_ejercicios_anteriores: yearData.utilidades_ejercicios_anteriores,
           },
           estado_resultados: {
-            ventas:             yearData.ventas,
-            costos_venta:       yearData.costos_venta,
-            gastos_operacion:   yearData.gastos_operacion,
-            gastos_financieros: yearData.gastos_financieros,
-            otros_productos:    yearData.otros_productos,
-            otros_gastos:       yearData.otros_gastos,
-            impuestos:          yearData.impuestos,
-            depreciacion:       yearData.depreciacion,
+            ventas:              yearData.ventas,
+            costos_venta:        yearData.costos_venta,
+            gastos_operacion:    yearData.gastos_operacion,
+            gastos_financieros:  yearData.gastos_financieros,
+            otros_productos:     yearData.otros_productos,
+            otros_gastos:        yearData.otros_gastos,
+            impuestos:           yearData.impuestos,
+            depreciacion:        yearData.depreciacion,
+            resultado_ejercicio: yearData.resultado_ejercicio,
           },
         }
         console.log(`[Upload] ✅ Estado financiero extraído: periodo=${yearData.periodo}`)

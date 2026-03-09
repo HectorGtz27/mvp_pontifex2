@@ -78,9 +78,40 @@ export async function buildMasterClientWorkbook(formData, extracted, bankStateme
   const tipoColateral = formData.tipoColateral || ''
 
   // ── Información Cuantitativa ──
-  const nivelVentasAnuales = formData.nivelVentasAnuales || ''
+  // Extraer ventas del estado financiero más reciente disponible
+  let nivelVentasAnuales = formData.nivelVentasAnuales || ''
+  if (financialYears && financialYears.length > 0) {
+    // Iterar en orden inverso para obtener el año más reciente primero
+    for (let i = financialYears.length - 1; i >= 0; i--) {
+      const yr = financialYears[i]
+      if (yr) {
+        const er = yr.estado_resultados || yr
+        if (er.ventas != null) {
+          nivelVentasAnuales = Number(er.ventas)
+          break
+        }
+      }
+    }
+  }
   const margenRealUtilidad = formData.margenRealUtilidad || ''
   const situacionBuroCredito = formData.situacionBuroCredito || ''
+
+  // Extraer resultado_ejercicio del estado financiero más reciente
+  let resultadoEjercicio = ''
+  if (financialYears && financialYears.length > 0) {
+    for (let i = financialYears.length - 1; i >= 0; i--) {
+      const yr = financialYears[i]
+      if (yr) {
+        const er = yr.estado_resultados || yr
+        if (er.resultado_ejercicio != null) {
+          // Dividir entre 100 porque Excel con formato % multiplica automáticamente
+          // Si Bedrock extrae 12.9 → 12.9/100 = 0.129 → Excel muestra 12.9%
+          resultadoEjercicio = Number(er.resultado_ejercicio) / 100
+          break
+        }
+      }
+    }
+  }
 
   // 3. Get the "Infromacion General " sheet
   const worksheet = workbook.getWorksheet('Infromacion General ')
@@ -131,7 +162,12 @@ export async function buildMasterClientWorkbook(formData, extracted, bankStateme
   // ── INFORMACION CUANTITATIVA ──
   // Ajusta estas referencias de celda según tu plantilla Excel
   worksheet.getCell('F37').value = nivelVentasAnuales
-  worksheet.getCell('K37').value = margenRealUtilidad
+  
+  // K37: Resultado del Ejercicio (porcentaje con 1 decimal)
+  const cellK37 = worksheet.getCell('K37')
+  cellK37.value = resultadoEjercicio
+  cellK37.numFmt = '0.0%'  // Formato: porcentaje con 1 decimal (ej: 12.9%)
+  
   worksheet.getCell('P23').value = situacionBuroCredito
 
   // 5. Fill "Flujos" sheet with bank statement data
