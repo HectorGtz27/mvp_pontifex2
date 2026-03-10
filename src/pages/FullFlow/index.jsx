@@ -9,10 +9,16 @@ import {
   fetchSolicitud,
   createCliente,
   createSolicitud,
+  updateSolicitud,
   submitDecision,
   fetchCuentasBancarias,
   createCuentaBancaria,
   deleteCuentaBancaria,
+  calcularLiquidez,
+  calcularRentabilidad,
+  calcularBuro,
+  calcularDscr,
+  calcularScore,
 } from '../../utils/api'
 import showToast from '../../utils/toast'
 
@@ -146,8 +152,8 @@ export default function FullFlow() {
             tipoColateral: sol.tipoColateral || '',
             nivelVentasAnuales: sol.nivelVentasAnuales || '',
             margenRealUtilidad: sol.margenRealUtilidad || '',
-            situacionBuroCredito: sol.situacionBuroCredito || '',
             nivelBuroCredito: sol.nivelBuroCredito || '',
+            esg: sol.esg || '',
             notas: sol.notas || '',
           })
           setClienteId(sol.clienteId)
@@ -200,6 +206,52 @@ export default function FullFlow() {
     if (!id) return
     setLoading(true)
     try {
+      // Calcular indicadores de liquidez automáticamente
+      try {
+        await calcularLiquidez(id)
+        console.log('✅ Indicadores de liquidez calculados automáticamente')
+      } catch (err) {
+        console.warn('⚠️ No se pudieron calcular indicadores de liquidez:', err.message)
+        // No es crítico, continuar cargando el dashboard
+      }
+
+      // Calcular indicadores de rentabilidad automáticamente
+      try {
+        await calcularRentabilidad(id)
+        console.log('✅ Indicadores de rentabilidad calculados automáticamente')
+      } catch (err) {
+        console.warn('⚠️ No se pudieron calcular indicadores de rentabilidad:', err.message)
+        // No es crítico, continuar cargando el dashboard
+      }
+
+      // Calcular score de buró de crédito automáticamente
+      try {
+        await calcularBuro(id)
+        console.log('✅ Score de buró de crédito calculado automáticamente')
+      } catch (err) {
+        console.warn('⚠️ No se pudo calcular score de buró:', err.message)
+        // No es crítico, continuar cargando el dashboard
+      }
+
+      // Calcular DSCR automáticamente
+      try {
+        await calcularDscr(id)
+        console.log('✅ DSCR calculado automáticamente')
+      } catch (err) {
+        console.warn('⚠️ No se pudo calcular DSCR:', err.message)
+        // No es crítico, continuar cargando el dashboard
+      }
+
+      // Calcular Score Compuesto automáticamente
+      try {
+        await calcularScore(id)
+        console.log('✅ Score compuesto calculado automáticamente')
+      } catch (err) {
+        console.warn('⚠️ No se pudo calcular score compuesto:', err.message)
+        // No es crítico, continuar cargando el dashboard
+      }
+
+      // Cargar datos del dashboard
       const [score, kpis, rec, sheet] = await Promise.allSettled([
         fetchScore(id), fetchKpis(id), fetchRecommendation(id), fetchSpreadsheet(id),
       ])
@@ -241,8 +293,8 @@ export default function FullFlow() {
         tipoColateral: formData.tipoColateral || null,
         nivelVentasAnuales: formData.nivelVentasAnuales ? Number(formData.nivelVentasAnuales) : null,
         margenRealUtilidad: formData.margenRealUtilidad ? Number(formData.margenRealUtilidad) : null,
-        situacionBuroCredito: formData.situacionBuroCredito || null,
         nivelBuroCredito: formData.nivelBuroCredito || null,
+        esg: formData.esg || null,
         notas: formData.notas || null,
       })
       setSolicitudId(sol.id)
@@ -460,7 +512,21 @@ export default function FullFlow() {
   const formComplete = formData.razonSocial?.trim() && formData.monto && formData.destino?.trim()
   const canGoToStep1 = formComplete
   const canGoToStep2 = documentsComplete
-  const updateForm = (field, value) => setFormData((prev) => ({ ...prev, [field]: value }))
+  
+  const updateForm = async (field, value) => {
+    setFormData((prev) => ({ ...prev, [field]: value }))
+    
+    // Auto-save nivelBuroCredito and esg when changed
+    if ((field === 'nivelBuroCredito' || field === 'esg') && solicitudId) {
+      try {
+        await updateSolicitud(solicitudId, { [field]: value || null })
+        console.log(`✅ ${field} actualizado automáticamente:`, value)
+      } catch (err) {
+        console.error(`Error al actualizar ${field}:`, err)
+        showToast.error(`Error al guardar ${field === 'nivelBuroCredito' ? 'nivel de buró' : 'ESG'}`)
+      }
+    }
+  }
 
   // ── Cuentas Bancarias handlers ──
   const handleOpenBankStatements = async () => {
@@ -587,7 +653,10 @@ export default function FullFlow() {
                 onClick={() => {
                   if (step.id === 0) setCurrentStep(0)
                   if (step.id === 1 && canGoToStep1) setCurrentStep(1)
-                  if (step.id === 2 && canGoToStep2) setCurrentStep(2)
+                  if (step.id === 2 && canGoToStep2) {
+                    setCurrentStep(2)
+                    loadDashboardData(solicitudId)
+                  }
                 }}
                 className={`flex items-center gap-2 w-full ${i < STEPS.length - 1 ? 'max-w-[200px]' : ''}`}
               >

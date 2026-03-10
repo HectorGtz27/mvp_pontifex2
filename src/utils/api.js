@@ -74,6 +74,16 @@ export async function createSolicitud(data) {
   return res.json()
 }
 
+export async function updateSolicitud(id, data) {
+  const res = await fetch(`${BASE}/solicitudes/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(`API error ${res.status}`)
+  return res.json()
+}
+
 // ─── Documentos, campos extraídos, score, KPIs ────────────
 export async function fetchDocuments(solicitudId) {
   return apiFetch(`/solicitudes/${solicitudId}/documents`)
@@ -93,6 +103,46 @@ export async function fetchScore(solicitudId) {
 
 export async function fetchKpis(solicitudId) {
   return apiFetch(`/solicitudes/${solicitudId}/kpis`)
+}
+
+export async function calcularLiquidez(solicitudId) {
+  const res = await fetch(`${BASE}/solicitudes/${solicitudId}/calcular-liquidez`, {
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error(`API error ${res.status}`)
+  return res.json()
+}
+
+export async function calcularRentabilidad(solicitudId) {
+  const res = await fetch(`${BASE}/solicitudes/${solicitudId}/calcular-rentabilidad`, {
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error(`API error ${res.status}`)
+  return res.json()
+}
+
+export async function calcularBuro(solicitudId) {
+  const res = await fetch(`${BASE}/solicitudes/${solicitudId}/calcular-buro`, {
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error(`API error ${res.status}`)
+  return res.json()
+}
+
+export async function calcularDscr(solicitudId) {
+  const res = await fetch(`${BASE}/solicitudes/${solicitudId}/calcular-dscr`, {
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error(`API error ${res.status}`)
+  return res.json()
+}
+
+export async function calcularScore(solicitudId) {
+  const res = await fetch(`${BASE}/solicitudes/${solicitudId}/calcular-score`, {
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error(`API error ${res.status}`)
+  return res.json()
 }
 
 export async function fetchRecommendation(solicitudId) {

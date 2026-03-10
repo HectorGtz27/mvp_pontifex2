@@ -1,5 +1,16 @@
 const express = require('express')
 const prisma = require('../prisma.cjs')
+const { 
+  calcularIndicadoresLiquidez, 
+  guardarIndicadoresLiquidez,
+  calcularIndicadoresRentabilidad,
+  guardarIndicadoresRentabilidad,
+  calcularIndicadoresDSCR,
+  guardarIndicadoresDSCR,
+  guardarScoreBuro,
+  calcularScoreCompuesto,
+  guardarScoreCompuesto,
+} = require('../services/indicadoresService.cjs')
 
 const router = express.Router()
 
@@ -71,8 +82,8 @@ router.get('/solicitudes/:id', async (req, res) => {
       tipoColateral: s.tipo_colateral,
       nivelVentasAnuales: s.nivel_ventas_anuales ? Number(s.nivel_ventas_anuales) : null,
       margenRealUtilidad: s.margen_real_utilidad ? Number(s.margen_real_utilidad) : null,
-      situacionBuroCredito: s.situacion_buro_credito,
       nivelBuroCredito: s.nivel_buro_credito,
+      esg: s.esg,
       estatus: s.estatus,
       docsTotal: s.docs_total,
       docsSubidos: s.docs_subidos,
@@ -116,8 +127,8 @@ router.post('/solicitudes', async (req, res) => {
         tipo_colateral: b.tipoColateral || null,
         nivel_ventas_anuales: b.nivelVentasAnuales || null,
         margen_real_utilidad: b.margenRealUtilidad || null,
-        situacion_buro_credito: b.situacionBuroCredito || null,
         nivel_buro_credito: b.nivelBuroCredito || null,
+        esg: b.esg || null,
         docs_total: docCount,
         notas: b.notas || null,
       },
@@ -131,6 +142,47 @@ router.post('/solicitudes', async (req, res) => {
       divisa: s.divisa,
     })
   } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+// ═══════════════════════════════════════════════════════════════
+// PUT /api/solicitudes/:id
+// Actualiza una solicitud existente
+// ═══════════════════════════════════════════════════════════════
+router.put('/solicitudes/:id', async (req, res) => {
+  try {
+    const solicitudId = req.params.id
+    const b = req.body
+
+    // Construir objeto data solo con campos permitidos
+    const data = {}
+    if (b.monto !== undefined) data.monto = b.monto
+    if (b.divisa !== undefined) data.divisa = b.divisa
+    if (b.plazoDeseado !== undefined) data.plazo_deseado = b.plazoDeseado
+    if (b.destino !== undefined) data.destino = b.destino
+    if (b.tasaObjetivo !== undefined) data.tasa_objetivo = b.tasaObjetivo
+    if (b.tipoColateral !== undefined) data.tipo_colateral = b.tipoColateral
+    if (b.nivelVentasAnuales !== undefined) data.nivel_ventas_anuales = b.nivelVentasAnuales
+    if (b.margenRealUtilidad !== undefined) data.margen_real_utilidad = b.margenRealUtilidad
+    if (b.nivelBuroCredito !== undefined) data.nivel_buro_credito = b.nivelBuroCredito
+    if (b.esg !== undefined) data.esg = b.esg
+    if (b.notas !== undefined) data.notas = b.notas
+
+    const updated = await prisma.solicitud.update({
+      where: { id: solicitudId },
+      data,
+    })
+
+    res.json({
+      success: true,
+      id: updated.id,
+      updated: true,
+    })
+  } catch (err) {
+    if (err.code === 'P2025') {
+      return res.status(404).json({ error: 'Solicitud no encontrada' })
+    }
     res.status(400).json({ error: err.message })
   }
 })
@@ -365,6 +417,210 @@ router.get('/solicitudes/:id/cuentas-bancarias', async (req, res) => {
         .filter(Boolean)
         .sort(),
     })))
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ═════════════════════════════════════════════════════════════
+// POST /api/solicitudes/:id/calcular-liquidez
+// Calcula indicadores de liquidez y los guarda en la tabla indicadores
+// ═════════════════════════════════════════════════════════════
+router.post('/solicitudes/:id/calcular-liquidez', async (req, res) => {
+  try {
+    const solicitudId = req.params.id
+
+    // Verificar que la solicitud existe
+    const solicitud = await prisma.solicitud.findUnique({
+      where: { id: solicitudId }
+    })
+
+    if (!solicitud) {
+      return res.status(404).json({ error: 'Solicitud no encontrada' })
+    }
+
+    // Calcular indicadores
+    const indicadores = await calcularIndicadoresLiquidez(solicitudId)
+
+    if (indicadores.error) {
+      return res.status(400).json({ 
+        error: indicadores.error,
+        indicadores 
+      })
+    }
+
+    // Guardar en base de datos
+    const count = await guardarIndicadoresLiquidez(solicitudId)
+
+    res.json({
+      success: true,
+      solicitudId,
+      indicadoresGuardados: count,
+      indicadores,
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ═════════════════════════════════════════════════════════════
+// POST /api/solicitudes/:id/calcular-rentabilidad
+// Calcula indicadores de rentabilidad y los guarda en la tabla indicadores
+// ═════════════════════════════════════════════════════════════
+router.post('/solicitudes/:id/calcular-rentabilidad', async (req, res) => {
+  try {
+    const solicitudId = req.params.id
+
+    // Verificar que la solicitud existe
+    const solicitud = await prisma.solicitud.findUnique({
+      where: { id: solicitudId }
+    })
+
+    if (!solicitud) {
+      return res.status(404).json({ error: 'Solicitud no encontrada' })
+    }
+
+    // Calcular indicadores
+    const indicadores = await calcularIndicadoresRentabilidad(solicitudId)
+
+    if (indicadores.error) {
+      return res.status(400).json({ 
+        error: indicadores.error,
+        indicadores 
+      })
+    }
+
+    // Guardar en base de datos
+    const count = await guardarIndicadoresRentabilidad(solicitudId)
+
+    res.json({
+      success: true,
+      solicitudId,
+      indicadoresGuardados: count,
+      indicadores,
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ═════════════════════════════════════════════════════════════
+// POST /api/solicitudes/:id/calcular-dscr
+// Calcula DSCR (Debt Service Coverage Ratio) y lo guarda en la tabla indicadores
+// ═════════════════════════════════════════════════════════════
+router.post('/solicitudes/:id/calcular-dscr', async (req, res) => {
+  try {
+    const solicitudId = req.params.id
+
+    // Verificar que la solicitud existe
+    const solicitud = await prisma.solicitud.findUnique({
+      where: { id: solicitudId }
+    })
+
+    if (!solicitud) {
+      return res.status(404).json({ error: 'Solicitud no encontrada' })
+    }
+
+    // Calcular indicadores
+    const indicadores = await calcularIndicadoresDSCR(solicitudId)
+
+    if (indicadores.error) {
+      return res.status(400).json({ 
+        error: indicadores.error,
+        indicadores 
+      })
+    }
+
+    // Guardar en base de datos
+    const count = await guardarIndicadoresDSCR(solicitudId)
+
+    res.json({
+      success: true,
+      solicitudId,
+      indicadoresGuardados: count,
+      indicadores,
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ═════════════════════════════════════════════════════════════
+// POST /api/solicitudes/:id/calcular-buro
+// Calcula score de buró de crédito basado en el nivel y lo guarda en indicadores
+// ═════════════════════════════════════════════════════════════
+router.post('/solicitudes/:id/calcular-buro', async (req, res) => {
+  try {
+    const solicitudId = req.params.id
+
+    // Verificar que la solicitud existe
+    const solicitud = await prisma.solicitud.findUnique({
+      where: { id: solicitudId },
+      select: { id: true, nivel_buro_credito: true }
+    })
+
+    if (!solicitud) {
+      return res.status(404).json({ error: 'Solicitud no encontrada' })
+    }
+
+    if (!solicitud.nivel_buro_credito) {
+      return res.status(400).json({ 
+        error: 'No se ha especificado el nivel de buró de crédito para esta solicitud'
+      })
+    }
+
+    // Guardar en base de datos
+    const count = await guardarScoreBuro(solicitudId)
+
+    res.json({
+      success: true,
+      solicitudId,
+      nivelBuro: solicitud.nivel_buro_credito,
+      indicadoresGuardados: count,
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ═════════════════════════════════════════════════════════════
+// POST /api/solicitudes/:id/calcular-score
+// Calcula el score compuesto basado en los 5 pilares y lo guarda
+// ═════════════════════════════════════════════════════════════
+router.post('/solicitudes/:id/calcular-score', async (req, res) => {
+  try {
+    const solicitudId = req.params.id
+
+    // Verificar que la solicitud existe
+    const solicitud = await prisma.solicitud.findUnique({
+      where: { id: solicitudId }
+    })
+
+    if (!solicitud) {
+      return res.status(404).json({ error: 'Solicitud no encontrada' })
+    }
+
+    // Calcular y guardar score compuesto
+    const score = await guardarScoreCompuesto(solicitudId)
+
+    res.json({
+      success: true,
+      solicitudId,
+      score: {
+        composite: score.compuesto,
+        grade: score.grado,
+        gradeLabel: score.grado_label,
+        bureauScore: score.score_buro,
+        bureauBand: score.banda_buro,
+        breakdown: score.desglose.map(d => ({
+          name: d.nombre,
+          weight: d.peso,
+          score: d.puntaje,
+          max: d.maximo,
+          status: d.estado
+        }))
+      }
+    })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
