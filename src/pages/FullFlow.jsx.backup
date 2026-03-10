@@ -1962,12 +1962,11 @@ export default function FullFlow() {
 
       {/* ========== STEP 2: Dashboard de evaluación + Chatbot ========== */}
       {currentStep === 2 && (
-        <div className="grid lg:grid-cols-[1fr_360px] gap-6">
-          {/* Dashboard column */}
-          <div className="space-y-6 min-w-0">
+        <div className="space-y-6">
+          {/* Header */}
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-slate-900">Dashboard de evaluación</h1>
+              <h1 className="text-2xl font-bold text-slate-900">Dashboard de Evaluación</h1>
               <p className="text-slate-600 mt-1">{formData.razonSocial || 'Solicitante'}</p>
             </div>
             <button
@@ -1982,10 +1981,11 @@ export default function FullFlow() {
           {/* KPI cards row */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div className="bg-white rounded-xl border border-slate-200 p-4">
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Monto solicitado</p>
+              <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Monto $</p>
               <p className="text-lg font-semibold text-slate-900 mt-1">
                 {formData.monto ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: formData.divisa || 'MXN', maximumFractionDigits: 0 }).format(Number(formData.monto)) : '—'}
               </p>
+              <p className="text-xs text-slate-500 mt-1">Resumen Cualitativo</p>
             </div>
             <div className="bg-white rounded-xl border border-slate-200 p-4">
               <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Score</p>
@@ -2010,174 +2010,306 @@ export default function FullFlow() {
             </div>
           </div>
 
-          {/* Main dashboard grid */}
-          <div className="grid lg:grid-cols-3 gap-6">
-            {/* Score card - prominent */}
-            <div className="lg:row-span-2 bg-white rounded-xl border border-slate-200 p-5">
-              <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">Clasificación</h2>
-              <div className="flex items-center gap-4 mb-6">
-                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-3xl font-bold ${GRADE_COLORS[scoreData?.grade] || 'bg-slate-100 text-slate-400'}`}>
+          {/* Two-column layout: Calificación & ESG | Solicitud details */}
+          <div className="grid lg:grid-cols-2 gap-6">
+            {/* Left column: Calificación + ESG Metrics */}
+            <div className="bg-white rounded-xl border border-slate-200 p-5">
+              <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">Calificación</h2>
+              
+              {/* Grade Badge */}
+              <div className="flex items-center gap-4 mb-6 pb-6 border-b border-slate-100">
+                <div className={`w-20 h-20 rounded-2xl flex items-center justify-center text-4xl font-bold ${GRADE_COLORS[scoreData?.grade] || 'bg-slate-100 text-slate-400'}`}>
                   {scoreData?.grade ?? '—'}
                 </div>
                 <div>
-                  <p className="font-semibold text-slate-900 text-lg">{scoreData?.gradeLabel ?? ''}</p>
-                  <p className="text-sm text-slate-500">Compuesto {scoreData?.composite ?? '—'}/100</p>
-                  <p className="text-xs text-slate-400 mt-0.5">{scoreData?.bureauBand ?? ''}</p>
+                  <p className="font-semibold text-slate-900 text-xl">{scoreData?.gradeLabel ?? 'Riesgo Medio'}</p>
+                  <p className="text-sm text-slate-500 mt-1">Score: {scoreData?.composite ?? '—'}/100</p>
                 </div>
               </div>
-              <div className="space-y-3">
-                {(scoreData?.scoreBreakdown || []).map((b, i) => (
-                  <div key={i}>
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="text-slate-600">{b.name}</span>
-                      <span className="font-mono text-slate-700">{b.score}</span>
-                    </div>
-                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full bg-pontifex-500" style={{ width: `${b.score}%` }} />
-                    </div>
-                  </div>
-                ))}
+
+              {/* ESG-style Metrics */}
+              <div className="space-y-4">
+                {/* Liquidez */}
+                <div className="flex items-center justify-between py-3 border-b border-slate-50">
+                  <span className="text-sm font-medium text-slate-700">Liquidez</span>
+                  <span className={`inline-flex items-center text-xs font-medium px-3 py-1 rounded-full ${
+                    (() => {
+                      const rc = kpisData.find(k => k.name === 'Razón Circulante')?.value
+                      if (!rc) return 'bg-slate-100 text-slate-600'
+                      if (rc > 2) return 'bg-emerald-100 text-emerald-700'
+                      if (rc >= 1) return 'bg-amber-100 text-amber-700'
+                      return 'bg-rose-100 text-rose-700'
+                    })()
+                  }`}>
+                    {(() => {
+                      const rc = kpisData.find(k => k.name === 'Razón Circulante')?.value
+                      if (!rc) return 'N/A'
+                      if (rc > 2) return 'Nulo'
+                      if (rc >= 1) return 'Mediano'
+                      return 'Gran Impacto'
+                    })()}
+                  </span>
+                </div>
+
+                {/* Rentabilidad */}
+                <div className="flex items-center justify-between py-3 border-b border-slate-50">
+                  <span className="text-sm font-medium text-slate-700">Rentabilidad</span>
+                  <span className={`inline-flex items-center text-xs font-medium px-3 py-1 rounded-full ${
+                    (() => {
+                      const roe = kpisData.find(k => k.name === 'ROE')?.value
+                      if (roe == null) return 'bg-slate-100 text-slate-600'
+                      const roePct = roe * 100
+                      if (roePct > 15) return 'bg-emerald-100 text-emerald-700'
+                      if (roePct >= 5) return 'bg-amber-100 text-amber-700'
+                      return 'bg-rose-100 text-rose-700'
+                    })()
+                  }`}>
+                    {(() => {
+                      const roe = kpisData.find(k => k.name === 'ROE')?.value
+                      if (roe == null) return 'N/A'
+                      const roePct = roe * 100
+                      if (roePct > 15) return 'Nulo'
+                      if (roePct >= 5) return 'Mediano'
+                      return 'Gran Impacto'
+                    })()}
+                  </span>
+                </div>
+
+                {/* ESG */}
+                <div className="flex items-center justify-between py-3">
+                  <span className="text-sm font-medium text-slate-700">ESG</span>
+                  <span className={`inline-flex items-center text-xs font-medium px-3 py-1 rounded-full ${
+                    (() => {
+                      const situacion = formData.situacionBuroCredito
+                      if (!situacion) return 'bg-slate-100 text-slate-600'
+                      if (situacion.includes('Sin problemas')) return 'bg-emerald-100 text-emerald-700'
+                      if (situacion.includes('retraso')) return 'bg-amber-100 text-amber-700'
+                      return 'bg-rose-100 text-rose-700'
+                    })()
+                  }`}>
+                    {(() => {
+                      const situacion = formData.situacionBuroCredito
+                      if (!situacion) return 'N/A'
+                      if (situacion.includes('Sin problemas')) return 'Nulo'
+                      if (situacion.includes('retraso')) return 'Mediano'
+                      return 'Gran Impacto'
+                    })()}
+                  </span>
+                </div>
               </div>
             </div>
 
-            {/* Solicitud + Recomendación */}
-            <div className="lg:col-span-2 space-y-6">
-              <div className="bg-white rounded-xl border border-slate-200 p-5">
-                <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Solicitud</h2>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
-                  <div><span className="text-slate-500 block">Plazo</span><span className="font-medium">{formData.plazoDeseado || '—'}</span></div>
-                  <div><span className="text-slate-500 block">Destino</span><span className="font-medium">{formData.destino || '—'}</span></div>
-                  <div><span className="text-slate-500 block">Monto sugerido</span><span className="font-medium">{recommendationData?.suggestedAmount ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: formData.divisa || 'MXN', maximumFractionDigits: 0 }).format(recommendationData.suggestedAmount) : '—'}</span></div>
-                </div>
-              </div>
-              <div className="bg-white rounded-xl border border-slate-200 p-5">
-                <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Recomendación del sistema</h2>
-                <p className="text-slate-800 font-medium mb-2">{recommendationData?.action === 'approve_conditional' ? 'Aprobar con condiciones' : recommendationData?.action ?? '—'} · {recommendationData?.suggestedRate ?? ''}</p>
-                <ul className="text-sm text-slate-600 space-y-1 list-disc list-inside">
-                  {(recommendationData?.conditions || []).map((c, i) => <li key={i}>{c}</li>)}
-                </ul>
-                <p className="text-slate-500 italic text-sm mt-3">"{recommendationData?.analystNotes ?? ''}"</p>
-              </div>
-            </div>
-
-            {/* KPIs compact */}
+            {/* Right column: Solicitud details + cascade chart */}
             <div className="bg-white rounded-xl border border-slate-200 p-5">
-              <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Indicadores</h2>
-              <div className="space-y-2">
-                {kpisData.map((k, i) => (
-                  <div key={i} className="flex justify-between items-center text-sm">
-                    <span className="text-slate-600">{k.name}</span>
-                    <span className="font-mono text-slate-800">
-                      {k.format === 'percent' ? `${(k.value * 100).toFixed(2)}%` : k.value}
-                      <span className="ml-1 text-slate-400">{k.status === 'ok' ? '✓' : '⚠'}</span>
+              <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">Solicitud</h2>
+              
+              {/* Solicitud details */}
+              <div className="grid grid-cols-2 gap-4 mb-6 pb-6 border-b border-slate-100">
+                <div>
+                  <span className="text-xs text-slate-500 block mb-1">Plazo</span>
+                  <span className="text-base font-semibold text-slate-900">{formData.plazoDeseado || '—'}</span>
+                </div>
+                <div>
+                  <span className="text-xs text-slate-500 block mb-1">Objetivo Monto</span>
+                  <span className="text-base font-semibold text-slate-900">
+                    {formData.monto ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: formData.divisa || 'MXN', maximumFractionDigits: 0 }).format(Number(formData.monto)) : '—'}
+                  </span>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-xs text-slate-500 block mb-1">Sector</span>
+                  <span className="text-base font-medium text-slate-900">{formData.destino || '—'}</span>
+                </div>
+              </div>
+
+              {/* Cascade chart */}
+              <div className="mb-6">
+                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Gráfica de Cascada Parciales</h3>
+                <div className="h-48">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart 
+                      data={[
+                        { name: 'Ingresos', value: 100, fill: '#10b981' },
+                        { name: 'Costos', value: -45, fill: '#ef4444' },
+                        { name: 'Gastos Op', value: -25, fill: '#f59e0b' },
+                        { name: 'EBITDA', value: 30, fill: '#3b82f6' },
+                      ]} 
+                      margin={{ top: 8, right: 8, left: -20, bottom: 0 }}
+                    >
+                      <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }} />
+                      <Tooltip />
+                      <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                        {[
+                          { name: 'Ingresos', value: 100, fill: '#10b981' },
+                          { name: 'Costos', value: -45, fill: '#ef4444' },
+                          { name: 'Gastos Op', value: -25, fill: '#f59e0b' },
+                          { name: 'EBITDA', value: 30, fill: '#3b82f6' },
+                        ].map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.fill} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Traffic light indicators */}
+              <div>
+                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Razones</h3>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-700">Liquidez</span>
+                    <span className={`text-2xl ${
+                      (() => {
+                        const rc = kpisData.find(k => k.name === 'Razón Circulante')?.value
+                        if (!rc) return 'text-slate-300'
+                        if (rc > 2) return 'text-emerald-500'
+                        if (rc >= 1.5) return 'text-amber-500'
+                        return 'text-slate-300'
+                      })()
+                    }`}>
+                      {(() => {
+                        const rc = kpisData.find(k => k.name === 'Razón Circulante')?.value
+                        if (!rc) return '○'
+                        if (rc > 2) return '●'
+                        if (rc >= 1.5) return '◐'
+                        return '○'
+                      })()}
                     </span>
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Gráficos generados por el chatbot (above Decisión) */}
-            {chartWidgets.length > 0 && (
-              <div className="lg:col-span-3 grid sm:grid-cols-2 gap-4">
-                {chartWidgets.map((widget) => (
-                  <div key={widget.id} className="bg-white rounded-xl border border-slate-200 p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-sm font-medium text-slate-800">{widget.title}</span>
-                      <button
-                        type="button"
-                        onClick={() => removeChart(widget.id)}
-                        className="text-slate-400 hover:text-red-600 text-xs px-2 py-1 rounded"
-                        aria-label="Quitar gráfico"
-                      >
-                        Quitar
-                      </button>
-                    </div>
-                    <div className="h-64">
-                      {widget.type === 'bar' && (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={widget.data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                            <YAxis tick={{ fontSize: 11 }} />
-                            <Tooltip />
-                            <Bar dataKey="value" fill="#237a49" radius={[4, 4, 0, 0]} name="Valor" />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      )}
-                      {widget.type === 'pie' && (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={widget.data}
-                              dataKey="value"
-                              nameKey="name"
-                              cx="50%"
-                              cy="50%"
-                              outerRadius={80}
-                              label={({ name, value }) => `${name}: ${value}`}
-                            >
-                              {widget.data.map((_, i) => (
-                                <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                              ))}
-                            </Pie>
-                            <Tooltip />
-                            <Legend />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      )}
-                    </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-700">ROE</span>
+                    <span className={`text-2xl ${
+                      (() => {
+                        const roe = kpisData.find(k => k.name === 'ROE')?.value
+                        if (roe == null) return 'text-slate-300'
+                        const roePct = roe * 100
+                        if (roePct > 15) return 'text-emerald-500'
+                        if (roePct >= 7) return 'text-amber-500'
+                        return 'text-slate-300'
+                      })()
+                    }`}>
+                      {(() => {
+                        const roe = kpisData.find(k => k.name === 'ROE')?.value
+                        if (roe == null) return '○'
+                        const roePct = roe * 100
+                        if (roePct > 15) return '●'
+                        if (roePct >= 7) return '◐'
+                        return '○'
+                      })()}
+                    </span>
                   </div>
-                ))}
+                </div>
               </div>
-            )}
 
-            {/* Decisión - full width */}
-            <div className="lg:col-span-3 bg-white rounded-xl border border-slate-200 p-5">
-              <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Decisión del analista</h2>
-              <textarea
-                placeholder="Motivo (obligatorio para auditoría)"
-                value={analystNotes}
-                onChange={(e) => setAnalystNotes(e.target.value)}
-                className="w-full h-20 px-3 py-2 border border-slate-200 rounded-lg text-sm resize-none focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500 mb-4"
-              />
-              <div className="flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={() => handleDecision('approved')}
-                  className="px-5 py-2.5 rounded-lg font-medium bg-emerald-600 text-white hover:bg-emerald-700"
-                >
-                  Aprobar (según recomendación)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDecision('adjusted')}
-                  className="px-5 py-2.5 rounded-lg font-medium border border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100"
-                >
-                  Aprobar con ajustes
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDecision('rejected')}
-                  className="px-5 py-2.5 rounded-lg font-medium border border-red-200 text-red-700 bg-red-50 hover:bg-red-100"
-                >
-                  Rechazar
-                </button>
-                {decision && (
-                  <span className="inline-flex items-center text-sm text-slate-600 pl-2">
-                    Decisión: <strong>{decision === 'approved' ? 'Aprobado' : decision === 'adjusted' ? 'Aprobado con ajustes' : 'Rechazado'}</strong>
-                  </span>
-                )}
+              {/* Venta indicator */}
+              <div className="mt-4 pt-4 border-t border-slate-100">
+                <span className="text-xs text-slate-500">Venta</span>
               </div>
             </div>
-          </div>
+
           </div>
 
-          {/* Chatbot column */}
-          <div className="bg-white rounded-xl border border-slate-200 flex flex-col h-[calc(100vh-12rem)] min-h-[420px] lg:sticky lg:top-24">
+          {/* Gráficos generados por el chatbot */}
+          {chartWidgets.length > 0 && (
+            <div className="grid sm:grid-cols-2 gap-4">
+              {chartWidgets.map((widget) => (
+                <div key={widget.id} className="bg-white rounded-xl border border-slate-200 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-medium text-slate-800">{widget.title}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeChart(widget.id)}
+                      className="text-slate-400 hover:text-red-600 text-xs px-2 py-1 rounded"
+                      aria-label="Quitar gráfico"
+                    >
+                      Quitar
+                    </button>
+                  </div>
+                  <div className="h-64">
+                    {widget.type === 'bar' && (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={widget.data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                          <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                          <YAxis tick={{ fontSize: 11 }} />
+                          <Tooltip />
+                          <Bar dataKey="value" fill="#237a49" radius={[4, 4, 0, 0]} name="Valor" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+                    {widget.type === 'pie' && (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={widget.data}
+                            dataKey="value"
+                            nameKey="name"
+                            cx="50%"
+                            cy="50%"
+                            outerRadius={80}
+                            label={({ name, value }) => `${name}: ${value}`}
+                          >
+                            {widget.data.map((_, i) => (
+                              <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip />
+                          <Legend />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Decisión section */}
+          <div className="bg-white rounded-xl border border-slate-200 p-5">
+            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Decisión del analista</h2>
+            <textarea
+              placeholder="Motivo (obligatorio para auditoría)"
+              value={analystNotes}
+              onChange={(e) => setAnalystNotes(e.target.value)}
+              className="w-full h-20 px-3 py-2 border border-slate-200 rounded-lg text-sm resize-none focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500 mb-4"
+            />
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => handleDecision('approved')}
+                className="px-5 py-2.5 rounded-lg font-medium bg-emerald-600 text-white hover:bg-emerald-700"
+              >
+                Aprobar (según recomendación)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDecision('adjusted')}
+                className="px-5 py-2.5 rounded-lg font-medium border border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100"
+              >
+                Aprobar con ajustes
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDecision('rejected')}
+                className="px-5 py-2.5 rounded-lg font-medium border border-red-200 text-red-700 bg-red-50 hover:bg-red-100"
+              >
+                Rechazar
+              </button>
+              {decision && (
+                <span className="inline-flex items-center text-sm text-slate-600 pl-2">
+                  Decisión: <strong>{decision === 'approved' ? 'Aprobado' : decision === 'adjusted' ? 'Aprobado con ajustes' : 'Rechazado'}</strong>
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Chat IA section - moved to bottom, full width */}
+          <div className="bg-white rounded-xl border border-slate-200 flex flex-col h-[28rem]">
             <div className="px-4 py-3 border-b border-slate-200 flex items-center gap-2">
               <span className="w-8 h-8 rounded-lg bg-pontifex-100 text-pontifex-700 flex items-center justify-center text-sm">💬</span>
               <div>
-                <h2 className="font-semibold text-slate-900">Pregunta sobre los datos</h2>
-                <p className="text-xs text-slate-500">Respuestas basadas en esta evaluación</p>
+                <h2 className="font-semibold text-slate-900">Chat con IA</h2>
+                <p className="text-xs text-slate-500">Pregunta sobre los datos de evaluación</p>
               </div>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
