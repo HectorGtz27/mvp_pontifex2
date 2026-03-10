@@ -48,8 +48,8 @@ export const INITIAL_FORM = {
   tipoColateral: '',
   nivelVentasAnuales: '',
   margenRealUtilidad: '',
-  situacionBuroCredito: '',
   nivelBuroCredito: '',
+  esg: '',
   notas: '',
 }
 

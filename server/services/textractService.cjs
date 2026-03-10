@@ -76,8 +76,16 @@ async function pollJob(jobId, GetCommandClass, logPrefix) {
 // ═══════════════════════════════════════════════════════════
 
 /**
+ * Sleep helper for retry logic
+ */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+/**
  * Extracts plain text from a single-page document (image or 1-page PDF).
  * Faster and cheaper than FORMS analysis.
+ * Includes retry logic for AWS throttling.
  *
  * @param {Buffer} fileBuffer - File bytes from multer
  * @returns {Promise<string>} All text lines joined with newlines
@@ -86,16 +94,37 @@ async function extractRawTextSync(fileBuffer) {
   console.log(`[Textract/TEXT] Extrayendo texto (sync), ${fileBuffer.length} bytes...`)
 
   const client = getClient()
-  const response = await client.send(
-    new DetectDocumentTextCommand({ Document: { Bytes: fileBuffer } })
-  )
+  const maxRetries = 3
+  let lastError = null
 
-  const lines = (response.Blocks || [])
-    .filter(b => b.BlockType === 'LINE')
-    .map(b => b.Text || '')
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await client.send(
+        new DetectDocumentTextCommand({ Document: { Bytes: fileBuffer } })
+      )
 
-  console.log(`[Textract/TEXT] ✅ Extraídas ${lines.length} líneas`)
-  return lines.join('\n')
+      const lines = (response.Blocks || [])
+        .filter(b => b.BlockType === 'LINE')
+        .map(b => b.Text || '')
+
+      console.log(`[Textract/TEXT] ✅ Extraídas ${lines.length} líneas`)
+      return lines.join('\n')
+    } catch (err) {
+      lastError = err
+      const isThrottling = err.name === 'ThrottlingException' || err.message?.includes('Too many requests')
+      
+      if (isThrottling && attempt < maxRetries) {
+        const delayMs = Math.min(1000 * Math.pow(2, attempt), 8000) // Exponential backoff: 1s, 2s, 4s
+        console.log(`[Textract/TEXT] ⚠️  Throttled (intento ${attempt + 1}/${maxRetries + 1}), reintentando en ${delayMs}ms...`)
+        await sleep(delayMs)
+        continue
+      }
+      
+      throw err
+    }
+  }
+
+  throw lastError
 }
 
 /**

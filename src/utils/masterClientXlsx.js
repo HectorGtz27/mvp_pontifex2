@@ -94,19 +94,18 @@ export async function buildMasterClientWorkbook(formData, extracted, bankStateme
     }
   }
   const margenRealUtilidad = formData.margenRealUtilidad || ''
-  const situacionBuroCredito = formData.situacionBuroCredito || ''
 
-  // Extraer resultado_ejercicio del estado financiero más reciente
-  let resultadoEjercicio = ''
+  // Extraer resultado_ejercicio_pct (porcentaje) del estado financiero más reciente para el Excel
+  let resultadoEjercicioPct = ''
   if (financialYears && financialYears.length > 0) {
     for (let i = financialYears.length - 1; i >= 0; i--) {
       const yr = financialYears[i]
       if (yr) {
         const er = yr.estado_resultados || yr
-        if (er.resultado_ejercicio != null) {
+        if (er.resultado_ejercicio_pct != null) {
           // Dividir entre 100 porque Excel con formato % multiplica automáticamente
           // Si Bedrock extrae 12.9 → 12.9/100 = 0.129 → Excel muestra 12.9%
-          resultadoEjercicio = Number(er.resultado_ejercicio) / 100
+          resultadoEjercicioPct = Number(er.resultado_ejercicio_pct) / 100
           break
         }
       }
@@ -165,10 +164,11 @@ export async function buildMasterClientWorkbook(formData, extracted, bankStateme
   
   // K37: Resultado del Ejercicio (porcentaje con 1 decimal)
   const cellK37 = worksheet.getCell('K37')
-  cellK37.value = resultadoEjercicio
+  cellK37.value = resultadoEjercicioPct
   cellK37.numFmt = '0.0%'  // Formato: porcentaje con 1 decimal (ej: 12.9%)
   
-  worksheet.getCell('P23').value = situacionBuroCredito
+  // Situación Buró de Crédito (campo eliminado)
+  // worksheet.getCell('P23').value = situacionBuroCredito
 
   // 5. Fill "Flujos" sheet with bank statement data
   //

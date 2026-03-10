@@ -398,7 +398,7 @@ ${rawText.substring(0, 15000)}
  *       proveedores, acreedores_diversos, docs_pagar_cp, total_pasivo_circulante,
  *       docs_pagar_lp, otros_pasivos, suma_pasivo_fijo,
  *       capital_social, utilidades_ejercicios_anteriores, suma_capital_contable,
- *       ventas, costos_venta, gastos_operacion, gastos_financieros,
+ *       ventas, costos_venta, utilidad_operacion, gastos_operacion, gastos_financieros,
  *       otros_productos, otros_gastos, impuestos, depreciacion
  *     }, ...
  *   ],
@@ -413,11 +413,11 @@ async function extractFinancialStatementsData(rawText) {
 
   const prompt = `Eres un experto contable mexicano especializado en análisis de estados financieros de empresas.
 
-Se te proporcionará el texto completo de un documento que contiene los Estados Financieros de una empresa para TRES ejercicios fiscales distintos. El documento incluye:
+Se te proporcionará el texto completo de un documento que contiene los Estados Financieros de una empresa. El documento incluye:
 1. Balance General (Activo Circulante, Activo Fijo, Otros Activos, Pasivo Circulante, Pasivo Largo Plazo, Capital Contable)
 2. Estado de Resultados (Ventas, Costos, Gastos, Utilidades)
 
-TAREA: Identifica los tres períodos fiscales y extrae para CADA UNO los siguientes conceptos numéricos (en la divisa del documento, sin símbolo, solo número o null):
+TAREA: Extrae los siguientes conceptos numéricos del período más reciente (en la divisa del documento, sin símbolo, solo número o null):
 
 Balance General — Activo:
 - inventarios
@@ -429,6 +429,7 @@ Balance General — Activo:
 - equipo_transporte (Equipo de Transporte)
 - intangibles (Intangibles / registro de marca)
 - total_activo_fijo (Total Activo Fijo / Suma del Activo Fijo)
+- suma_activo (Suma del Activo / Total Activo / Activo Total)
 
 Balance General — Pasivo:
 - proveedores
@@ -447,59 +448,65 @@ Balance General — Capital:
 Estado de Resultados:
 - ventas (ingresos totales / ventas netas)
 - costos_venta (Costos de Venta / Costo de lo Vendido)
+- utilidad_operacion (Utilidad de Operación / Utilidad Operativa / Resultado de Operación. Es la ganancia antes de gastos financieros e impuestos)
 - gastos_operacion (Gastos de Operación / Gastos Operativos)
 - gastos_financieros (Gastos Financieros / Gastos Fin.)
 - otros_productos (Otros Productos / Otros ingresos)
 - otros_gastos (Otros Gastos)
 - impuestos (ISR / Impuestos / Impuesto sobre la renta)
 - depreciacion (Depreciación / Amortización)
-- resultado_ejercicio (PORCENTAJE de margen neto / % del Resultado del Ejercicio sobre ventas. Si muestra "14.2%" extraer 14.2, si muestra "0.142" o sin símbolo % pero es decimal pequeño entonces multiplicar por 100)
+- resultado_ejercicio (VALOR ABSOLUTO de la Utilidad Neta / Resultado del Ejercicio en pesos/dólares. Extraer DIRECTAMENTE el MONTO en $, NO el porcentaje. Si ves columnas con "%" ignóralas y usa la columna de SALDOS/VALORES ABSOLUTOS)
+- resultado_ejercicio_pct (PORCENTAJE de margen neto / % del Resultado del Ejercicio sobre ventas. Si muestra "14.2%" extraer 14.2, si muestra "0.142" o decimal pequeño multiplicar por 100. Si hay columna separada de "%" usa ese valor)
 
-INSTRUCCIONES IMPORTANTES:
-- Identifica el período por el encabezado de columna (ej: "31/12/2019", "31/12/2020", "30/6/2021", "2019", "2020", "2021", "Dic 2019", etc.)
-- Para el campo "periodo": usa el año en formato "YYYY" o "YYYY-MM" si incluye mes/año (ej: "2019", "2021-06")
-- Los valores son SALDOS, no porcentajes (ignora columnas de %), EXCEPTO "resultado_ejercicio" que debe ser el PORCENTAJE (columna de %)
-- Si el concepto no aparece o no puedes determinarlo, usa null
-- Ordena los años de más antiguo a más reciente
+INSTRUCCIONES CRÍTICAS:
+- resultado_ejercicio: Debe ser el MONTO EN DINERO (miles o millones de pesos/dólares), NO el porcentaje. Busca la columna de valores absolutos, NO la de %
+- resultado_ejercicio_pct: Debe ser el PORCENTAJE como número decimal (ej: si dice "12.9%" guarda 12.9)
+- Si el documento muestra múltiples años, usa el más reciente
+- Identifica el período por el encabezado de columna (ej: "31/12/2019", "2020", "Dic 2021", etc.)
+- Para el campo "periodo": usa el año en formato "YYYY" o "YYYY-MM" si incluye mes/año
 - Los montos deben ser números sin comas, sin signos, sin texto (solo el valor numérico)
-- Para resultado_ejercicio: extraer el porcentaje como número decimal (ej: 14.2 para 14.2%, no 0.142)
+- Si el concepto no aparece o no puedes determinarlo, usa null
 
 Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional, sin markdown:
 {
-  "years": [
-    {
-      "periodo": "YYYY o YYYY-MM",
-      "inventarios": number_or_null,
-      "clientes": number_or_null,
-      "deudores_diversos": number_or_null,
-      "total_activo_circulante": number_or_null,
-      "terrenos_edificios": number_or_null,
-      "maquinaria_equipo": number_or_null,
-      "equipo_transporte": number_or_null,
-      "intangibles": number_or_null,
-      "total_activo_fijo": number_or_null,
-      "proveedores": number_or_null,
-      "acreedores_diversos": number_or_null,
-      "docs_pagar_cp": number_or_null,
-      "total_pasivo_circulante": number_or_null,
-      "docs_pagar_lp": number_or_null,
-      "otros_pasivos": number_or_null,
-      "suma_pasivo_fijo": number_or_null,
-      "capital_social": number_or_null,
-      "utilidades_ejercicios_anteriores": number_or_null,
-      "suma_capital_contable": number_or_null,
-      "ventas": number_or_null,
-      "costos_venta": number_or_null,
-      "gastos_operacion": number_or_null,
-      "gastos_financieros": number_or_null,
-      "otros_productos": number_or_null,
-      "otros_gastos": number_or_null,
-      "impuestos": number_or_null,
-      "depreciacion": number_or_null,
-      "resultado_ejercicio": number_or_null  (PORCENTAJE, ej: 14.2 para 14.2%)
-    }
-  ],
-  "confianza": "alta|media|baja"
+  "tipo": "estados_financieros",
+  "periodo": "YYYY o YYYY-MM",
+  "confianza": "alta|media|baja",
+  "balance_general": {
+    "inventarios": number_or_null,
+    "clientes": number_or_null,
+    "deudores_diversos": number_or_null,
+    "total_activo_circulante": number_or_null,
+    "terrenos_edificios": number_or_null,
+    "maquinaria_equipo": number_or_null,
+    "equipo_transporte": number_or_null,
+    "intangibles": number_or_null,
+    "total_activo_fijo": number_or_null,
+    "suma_activo": number_or_null,
+    "proveedores": number_or_null,
+    "acreedores_diversos": number_or_null,
+    "docs_pagar_cp": number_or_null,
+    "total_pasivo_circulante": number_or_null,
+    "docs_pagar_lp": number_or_null,
+    "otros_pasivos": number_or_null,
+    "suma_pasivo_fijo": number_or_null,
+    "capital_social": number_or_null,
+    "utilidades_ejercicios_anteriores": number_or_null,
+    "suma_capital_contable": number_or_null
+  },
+  "estado_resultados": {
+    "ventas": number_or_null,
+    "costos_venta": number_or_null,
+    "utilidad_operacion": number_or_null,
+    "gastos_operacion": number_or_null,
+    "gastos_financieros": number_or_null,
+    "otros_productos": number_or_null,
+    "otros_gastos": number_or_null,
+    "impuestos": number_or_null,
+    "depreciacion": number_or_null,
+    "resultado_ejercicio": number_or_null,
+    "resultado_ejercicio_pct": number_or_null
+  }
 }
 
 TEXTO DEL DOCUMENTO DE ESTADOS FINANCIEROS:
@@ -562,21 +569,134 @@ ${rawText.substring(0, 50000)}
   } catch (parseErr) {
     console.error('[Bedrock/EF] Error parseando JSON de Claude:', parseErr.message)
     return {
-      years: [],
+      tipo: null,
+      periodo: null,
+      balance_general: null,
+      estado_resultados: null,
       confianza: null,
       parseError: `No se pudo parsear la respuesta: ${parseErr.message}`,
       rawResponse,
     }
   }
 
-  const years = Array.isArray(parsed.years) ? parsed.years : []
-  console.log(`[Bedrock/EF] ✅ Extraídos ${years.length} periodos:`, years.map(y => y.periodo))
+  console.log(`[Bedrock/EF] ✅ Extraído periodo: ${parsed.periodo}`)
 
   return {
-    years,
+    tipo: parsed.tipo || 'estados_financieros',
+    periodo: parsed.periodo || null,
+    balance_general: parsed.balance_general || {},
+    estado_resultados: parsed.estado_resultados || {},
     confianza: parsed.confianza || null,
     rawResponse,
   }
 }
 
-module.exports = { extractBankStatementData, extractCSFData, extractFinancialStatementsData }
+// AGREGAR al final de bedrockService.cjs, antes del module.exports
+
+/**
+ * Interpreta la pregunta del usuario y devuelve intención estructurada
+ */
+async function interpretQuestion(question) {
+  const client = getClient()
+  const command = new ConverseCommand({
+    modelId: MODEL_ID,
+    messages: [{
+      role: 'user',
+      content: [{ text: `Clasifica esta pregunta de un analista de crédito en JSON.
+      
+Pregunta: "${question}"
+
+Reglas de clasificación:
+- Si pregunta por movimientos bancarios, abonos, retiros, saldo, BBVA, Banamex, Citibanamex, estados de cuenta, ingresos bancarios → entity: "estados_cuenta"
+- Si pregunta por activo, pasivo, capital, balance, inventarios, ventas, costos, utilidad, EBITDA, estado de resultados → entity: "estados_financieros"
+- Si pregunta por DSCR, ROE, liquidez, rentabilidad, scoring, KPIs, indicadores → entity: "kpis"
+- Si pregunta por solicitudes, créditos, montos, plazos → entity: "solicitudes"
+- Si pregunta por clientes, empresas, RFC → entity: "clientes"
+- Si pregunta por instituciones bancarias disponibles → entity: "bancos"
+- Si pregunta por archivos, documentos, PDFs → entity: "documentos"
+- Si es general → entity: "general"
+
+Responde SOLO con JSON válido:
+{
+  "entity": "clientes|solicitudes|bancos|documentos|kpis|creditos|estados_financieros|estados_cuenta|general",
+  "action": "listar|buscar|detalle|calcular|general",
+  "needsChart": true or false,
+  "chartType": "bar|pie|line|null",
+  "filters": {}
+}` }]
+    }],
+    inferenceConfig: { maxTokens: 200, temperature: 0 }
+  })
+
+  const response = await client.send(command)
+  const raw = response.output?.message?.content?.[0]?.text || ''
+  return JSON.parse(cleanJsonFence(raw))
+}
+
+/**
+ * Genera respuesta conversacional con contexto de datos
+ */
+async function generateChatResponse(question, context, history = [], needsChart = false) {
+  const client = getClient()
+
+  const systemPrompt = `Eres un asistente especializado en análisis crediticio y financiero.
+Tienes acceso a datos reales de la plataforma. Responde siempre en español, 
+de forma clara y profesional. No inventes datos financieros ni scores.
+
+${needsChart ? `
+IMPORTANTE: El usuario pidió una gráfica. Responde ÚNICAMENTE con un JSON válido:
+{
+  "text": "explicación breve en texto plano",
+  "chart": {
+    "type": "bar|pie|line",
+    "title": "título de la gráfica",
+    "data": [
+      { "name": "etiqueta", "value": número },
+      ...
+    ]
+  }
+}
+Los datos del chart deben venir de los datos disponibles proporcionados.
+` : 'Responde en texto plano y conversacional, sin markdown, sin asteriscos, sin símbolos #.'}`
+
+  const messages = [
+    ...history.slice(-6),
+    {
+      role: 'user',
+      content: [{ text: context 
+        ? `Datos disponibles:\n${JSON.stringify(context, null, 2)}\n\nPregunta: ${question}`
+        : `Pregunta: ${question}`
+      }]
+    }
+  ]
+
+  const command = new ConverseCommand({
+    modelId: MODEL_ID,
+    system: [{ text: systemPrompt }],
+    messages,
+    inferenceConfig: { maxTokens: 1024, temperature: 0.3 }
+  })
+
+  const response = await client.send(command)
+  const raw = response.output?.message?.content?.[0]?.text || ''
+
+  // Si esperamos gráfica, intentar parsear JSON
+  if (needsChart) {
+    try {
+      return JSON.parse(cleanJsonFence(raw))
+    } catch {
+      return { text: raw, chart: null }
+    }
+  }
+
+  return raw
+}
+
+
+module.exports = { 
+  extractBankStatementData, 
+  extractCSFData, 
+  extractFinancialStatementsData,
+  interpretQuestion,
+  generateChatResponse
+}

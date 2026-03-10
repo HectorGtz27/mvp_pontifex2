@@ -220,49 +220,19 @@ async function uploadFile(req, res) {
         
 
         const bedrockResult = await extractFinancialStatementsData(rawText)
-        const yearData = bedrockResult.years?.[0]
 
-        if (!yearData) {
+        if (!bedrockResult.periodo) {
           throw new Error('Claude no pudo identificar el período fiscal en el documento')
         }
 
         extractedData = {
-          tipo: 'estados_financieros',
-          periodo: yearData.periodo,
+          tipo: bedrockResult.tipo || 'estados_financieros',
+          periodo: bedrockResult.periodo,
           confianza: bedrockResult.confianza,
-          balance_general: {
-            inventarios:                      yearData.inventarios,
-            clientes:                         yearData.clientes,
-            deudores_diversos:                yearData.deudores_diversos,
-            total_activo_circulante:          yearData.total_activo_circulante,
-            terrenos_edificios:               yearData.terrenos_edificios,
-            maquinaria_equipo:                yearData.maquinaria_equipo,
-            equipo_transporte:                yearData.equipo_transporte,
-            intangibles:                      yearData.intangibles,
-            total_activo_fijo:                yearData.total_activo_fijo,
-            proveedores:                      yearData.proveedores,
-            acreedores_diversos:              yearData.acreedores_diversos,
-            docs_pagar_cp:                    yearData.docs_pagar_cp,
-            total_pasivo_circulante:          yearData.total_pasivo_circulante,
-            docs_pagar_lp:                    yearData.docs_pagar_lp,
-            otros_pasivos:                    yearData.otros_pasivos,
-            suma_pasivo_fijo:                 yearData.suma_pasivo_fijo,
-            capital_social:                   yearData.capital_social,
-            utilidades_ejercicios_anteriores: yearData.utilidades_ejercicios_anteriores,
-          },
-          estado_resultados: {
-            ventas:              yearData.ventas,
-            costos_venta:        yearData.costos_venta,
-            gastos_operacion:    yearData.gastos_operacion,
-            gastos_financieros:  yearData.gastos_financieros,
-            otros_productos:     yearData.otros_productos,
-            otros_gastos:        yearData.otros_gastos,
-            impuestos:           yearData.impuestos,
-            depreciacion:        yearData.depreciacion,
-            resultado_ejercicio: yearData.resultado_ejercicio,
-          },
+          balance_general: bedrockResult.balance_general,
+          estado_resultados: bedrockResult.estado_resultados,
         }
-        console.log(`[Upload] ✅ Estado financiero extraído: periodo=${yearData.periodo}`)
+        console.log(`[Upload] ✅ Estado financiero extraído: periodo=${bedrockResult.periodo}`)
       } catch (err) {
         console.error(`❌ [Upload] Error procesando estado financiero (${documentTypeId}):`, err.message)
         textractError = `Error procesando estado financiero: ${err.message}`

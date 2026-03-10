@@ -119,22 +119,30 @@ export default function StepForm({ formData, updateForm, formComplete, savingApp
         <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
           <h2 className="text-lg font-semibold text-slate-800 border-b border-slate-100 pb-2">Información cuantitativa</h2>
 
-          <div className="grid sm:grid-cols-2 gap-5">
-            <div>
-              <label htmlFor="situacionBuroCredito" className="block text-sm font-medium text-slate-700 mb-1">Situación buró de crédito</label>
-              <select id="situacionBuroCredito" value={formData.situacionBuroCredito} onChange={(e) => updateForm('situacionBuroCredito', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500">
-                <option value="">Seleccionar</option>
-                <option value="sin_atrasos">Sin atrasos</option>
-                <option value="atrasos_menores">Atrasos menores (1-30 días)</option>
-                <option value="atrasos_moderados">Atrasos moderados (31-90 días)</option>
-                <option value="cartera_vencida">Cartera vencida (90+ días)</option>
-                <option value="sin_historial">Sin historial</option>
-              </select>
-            </div>
-            <div>
-              <label htmlFor="nivelBuroCredito" className="block text-sm font-medium text-slate-700 mb-1">Nivel del buró de crédito</label>
-              <input id="nivelBuroCredito" type="text" value={formData.nivelBuroCredito} onChange={(e) => updateForm('nivelBuroCredito', e.target.value)} placeholder="Ej. 650, Excelente, AAA" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500" />
-            </div>
+          <div>
+            <label htmlFor="nivelBuroCredito" className="block text-sm font-medium text-slate-700 mb-1">Nivel del buró de crédito</label>
+            <select id="nivelBuroCredito" value={formData.nivelBuroCredito} onChange={(e) => updateForm('nivelBuroCredito', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500">
+              <option value="">Seleccionar</option>
+              <option value="A1">A1 — Excelente (Riesgo mínimo)</option>
+              <option value="A2">A2 — Excelente</option>
+              <option value="B1">B1 — Muy bueno</option>
+              <option value="B2">B2 — Muy bueno</option>
+              <option value="C1">C1 — Bueno</option>
+              <option value="C2">C2 — Bueno</option>
+              <option value="D1">D1 — Aceptable</option>
+              <option value="D2">D2 — Aceptable</option>
+              <option value="E">E — Alto riesgo</option>
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="esg" className="block text-sm font-medium text-slate-700 mb-1">ESG (Impacto Social y Gobernanza)</label>
+            <select id="esg" value={formData.esg} onChange={(e) => updateForm('esg', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 focus:ring-2 focus:ring-pontifex-500 focus:border-pontifex-500">
+              <option value="">Sin especificar</option>
+              <option value="100">Gran Impacto</option>
+              <option value="80">Medio Impacto</option>
+              <option value="0">Nulo Impacto</option>
+            </select>
           </div>
 
           <div>

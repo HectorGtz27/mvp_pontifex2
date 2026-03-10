@@ -22,6 +22,7 @@ export const BG_FIELDS = [
   { key: 'equipo_transporte',              label: 'Equipo de Transporte' },
   { key: 'intangibles',                    label: 'Intangibles' },
   { key: 'total_activo_fijo',              label: 'Total Activo Fijo' },
+  { key: 'suma_activo',                    label: 'Suma del Activo' },
   { key: 'proveedores',                    label: 'Proveedores' },
   { key: 'acreedores_diversos',            label: 'Acreedores Diversos' },
   { key: 'docs_pagar_cp',                  label: 'Documentos por Pagar CP' },
@@ -31,6 +32,7 @@ export const BG_FIELDS = [
   { key: 'suma_pasivo_fijo',               label: 'Suma Pasivo Fijo' },
   { key: 'capital_social',                 label: 'Capital Social' },
   { key: 'utilidades_ejercicios_anteriores', label: 'Utilidades Ejercicios Anteriores' },
+  { key: 'suma_capital_contable',          label: 'Suma Capital Contable' },
 ]
 
 /** Estado de Resultados fields */
@@ -44,6 +46,7 @@ export const ER_FIELDS = [
   { key: 'impuestos',          label: 'Impuestos' },
   { key: 'depreciacion',       label: 'Depreciación' },
   { key: 'resultado_ejercicio', label: 'Resultado del Ejercicio' },
+  { key: 'resultado_ejercicio_pct', label: 'Resultado del Ejercicio (%)' },
 ]
 
 /**

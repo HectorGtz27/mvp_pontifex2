@@ -994,18 +994,20 @@ export default function FullFlow() {
       {/* ========== STEP 2 ========== */}
       {currentStep === 2 && (
         <StepEvaluation
-          formData={formData}
-          scoreData={scoreData}
-          kpisData={kpisData}
-          recommendationData={recommendationData}
-          uploadedDocs={uploadedDocs}
-          documentTypes={documentTypes}
-          decision={decision}
-          analystNotes={analystNotes}
-          setAnalystNotes={setAnalystNotes}
-          onDecision={handleDecision}
-          onBackToDocuments={() => setCurrentStep(1)}
-        />
+        formData={formData}
+        scoreData={scoreData}
+        solicitudId={solicitudId}
+        kpisData={kpisData}
+        recommendationData={recommendationData}
+        spreadsheetData={spreadsheetData}
+        uploadedDocs={uploadedDocs}
+        documentTypes={documentTypes}
+        decision={decision}
+        analystNotes={analystNotes}
+        setAnalystNotes={setAnalystNotes}
+        onDecision={handleDecision}
+        onBackToDocuments={() => setCurrentStep(1)}
+      />
       )}
     </div>
   )
