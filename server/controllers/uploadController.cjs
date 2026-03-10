@@ -234,15 +234,19 @@ async function uploadFile(req, res) {
             inventarios:                      yearData.inventarios,
             clientes:                         yearData.clientes,
             deudores_diversos:                yearData.deudores_diversos,
+            total_activo_circulante:          yearData.total_activo_circulante,
             terrenos_edificios:               yearData.terrenos_edificios,
             maquinaria_equipo:                yearData.maquinaria_equipo,
             equipo_transporte:                yearData.equipo_transporte,
             intangibles:                      yearData.intangibles,
+            total_activo_fijo:                yearData.total_activo_fijo,
             proveedores:                      yearData.proveedores,
             acreedores_diversos:              yearData.acreedores_diversos,
             docs_pagar_cp:                    yearData.docs_pagar_cp,
+            total_pasivo_circulante:          yearData.total_pasivo_circulante,
             docs_pagar_lp:                    yearData.docs_pagar_lp,
             otros_pasivos:                    yearData.otros_pasivos,
+            suma_pasivo_fijo:                 yearData.suma_pasivo_fijo,
             capital_social:                   yearData.capital_social,
             utilidades_ejercicios_anteriores: yearData.utilidades_ejercicios_anteriores,
           },
@@ -342,6 +346,13 @@ async function pLimit(items, fn, concurrency = 4) {
 }
 
 /**
+ * Sleep helper for rate limiting
+ */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+/**
  * Procesa un solo archivo de estado de cuenta (extrae página 1 → Textract → Bedrock).
  * Retorna el documento guardado + datos extraídos.
  */
@@ -390,6 +401,10 @@ async function processBankStatementFile(file, { solicitudId, cuentaBancariaId, s
     textractError,
   })
 
+  // Delay de 4 segundos entre archivos para respetar rate limits de AWS
+  await sleep(4000)
+  console.log(`[Bulk] ⏱️  Esperando 4s antes del siguiente archivo...`)
+
   return {
     fileName: file.originalname,
     success: !textractError,
@@ -432,10 +447,10 @@ async function uploadBulk(req, res) {
       return { file, key, s3Url }
     }, 6)
 
-    // 2. Procesar Textract + Bedrock en paralelo (máx 4 concurrentes para respetar límites AWS)
+    // 2. Procesar Textract + Bedrock secuencialmente (1 archivo a la vez para evitar rate limits)
     const results = await pLimit(s3Uploads, async ({ file, key, s3Url }) => {
       return processBankStatementFile(file, { solicitudId, cuentaBancariaId, s3Key: key, s3Url })
-    }, 4)
+    }, 1)
 
     const successful = results.filter(r => r.success).length
     const failed = results.filter(r => !r.success).length

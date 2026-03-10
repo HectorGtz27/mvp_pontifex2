@@ -17,6 +17,13 @@ function getClient() {
 }
 
 /**
+ * Sleep helper for retry logic
+ */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+/**
  * Strips markdown JSON fences (```json ... ```) that Claude sometimes adds.
  */
 function cleanJsonFence(raw) {
@@ -101,7 +108,33 @@ ${rawText.substring(0, 15000)}
   })
 
   console.log('[Bedrock] Enviando a Claude via Converse API...')
-  const response = await client.send(command)
+  
+  const maxRetries = 3
+  let lastError = null
+  let response = null
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      response = await client.send(command)
+      break // Success, exit retry loop
+    } catch (err) {
+      lastError = err
+      const isThrottling = err.name === 'ThrottlingException' || 
+                          err.name === 'TooManyRequestsException' ||
+                          err.message?.includes('Too many requests')
+      
+      if (isThrottling && attempt < maxRetries) {
+        const delayMs = Math.min(1000 * Math.pow(2, attempt), 8000) // 1s, 2s, 4s
+        console.log(`[Bedrock] ⚠️  Throttled (intento ${attempt + 1}/${maxRetries + 1}), reintentando en ${delayMs}ms...`)
+        await sleep(delayMs)
+        continue
+      }
+      
+      throw err
+    }
+  }
+
+  if (!response) throw lastError
 
   const rawResponse = response.output?.message?.content?.[0]?.text || ''
   console.log(`[Bedrock] Respuesta raw: ${rawResponse}`)
@@ -250,7 +283,33 @@ ${rawText.substring(0, 15000)}
   })
 
   console.log('[Bedrock/CSF] Enviando a Claude via Converse API...')
-  const response = await client.send(command)
+  
+  const maxRetries = 3
+  let lastError = null
+  let response = null
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      response = await client.send(command)
+      break
+    } catch (err) {
+      lastError = err
+      const isThrottling = err.name === 'ThrottlingException' || 
+                          err.name === 'TooManyRequestsException' ||
+                          err.message?.includes('Too many requests')
+      
+      if (isThrottling && attempt < maxRetries) {
+        const delayMs = Math.min(1000 * Math.pow(2, attempt), 8000)
+        console.log(`[Bedrock/CSF] ⚠️  Throttled (intento ${attempt + 1}/${maxRetries + 1}), reintentando en ${delayMs}ms...`)
+        await sleep(delayMs)
+        continue
+      }
+      
+      throw err
+    }
+  }
+
+  if (!response) throw lastError
 
   const rawResponse = response.output?.message?.content?.[0]?.text || ''
   console.log(`[Bedrock/CSF] Respuesta raw: ${rawResponse.substring(0, 500)}...`)
@@ -334,9 +393,10 @@ ${rawText.substring(0, 15000)}
  *   years: [
  *     {
  *       periodo: 'YYYY' | 'YYYY-MM',   // fiscal period label
- *       inventarios, clientes, deudores_diversos,
- *       terrenos_edificios, maquinaria_equipo, equipo_transporte, intangibles,
- *       proveedores, acreedores_diversos, docs_pagar_cp, docs_pagar_lp, otros_pasivos,
+ *       inventarios, clientes, deudores_diversos, total_activo_circulante,
+ *       terrenos_edificios, maquinaria_equipo, equipo_transporte, intangibles, total_activo_fijo,
+ *       proveedores, acreedores_diversos, docs_pagar_cp, total_pasivo_circulante,
+ *       docs_pagar_lp, otros_pasivos, suma_pasivo_fijo,
  *       capital_social, utilidades_ejercicios_anteriores, suma_capital_contable,
  *       ventas, costos_venta, gastos_operacion, gastos_financieros,
  *       otros_productos, otros_gastos, impuestos, depreciacion
@@ -363,17 +423,21 @@ Balance General — Activo:
 - inventarios
 - clientes (cuentas por cobrar a clientes)
 - deudores_diversos
+- total_activo_circulante (Total Activo Circulante / Suma del Activo Circulante)
 - terrenos_edificios (Terrenos y Edificios)
 - maquinaria_equipo (Maquinaria y Equipo)
 - equipo_transporte (Equipo de Transporte)
 - intangibles (Intangibles / registro de marca)
+- total_activo_fijo (Total Activo Fijo / Suma del Activo Fijo)
 
 Balance General — Pasivo:
 - proveedores
 - acreedores_diversos (Acreedores Div.)
 - docs_pagar_cp (Documentos por pagar a corto plazo, CP)
+- total_pasivo_circulante (Total Pasivo Circulante / Suma del Pasivo Circulante / Pasivo Circulante)
 - docs_pagar_lp (Documentos por pagar a largo plazo, LP)
 - otros_pasivos
+- suma_pasivo_fijo (Suma del Pasivo Fijo / Total Pasivo Fijo / Pasivo a Largo Plazo)
 
 Balance General — Capital:
 - capital_social
@@ -408,15 +472,19 @@ Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional, sin markdo
       "inventarios": number_or_null,
       "clientes": number_or_null,
       "deudores_diversos": number_or_null,
+      "total_activo_circulante": number_or_null,
       "terrenos_edificios": number_or_null,
       "maquinaria_equipo": number_or_null,
       "equipo_transporte": number_or_null,
       "intangibles": number_or_null,
+      "total_activo_fijo": number_or_null,
       "proveedores": number_or_null,
       "acreedores_diversos": number_or_null,
       "docs_pagar_cp": number_or_null,
+      "total_pasivo_circulante": number_or_null,
       "docs_pagar_lp": number_or_null,
       "otros_pasivos": number_or_null,
+      "suma_pasivo_fijo": number_or_null,
       "capital_social": number_or_null,
       "utilidades_ejercicios_anteriores": number_or_null,
       "suma_capital_contable": number_or_null,
@@ -456,7 +524,33 @@ ${rawText.substring(0, 50000)}
   })
 
   console.log('[Bedrock/EF] Enviando a Claude via Converse API...')
-  const response = await client.send(command)
+  
+  const maxRetries = 3
+  let lastError = null
+  let response = null
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      response = await client.send(command)
+      break
+    } catch (err) {
+      lastError = err
+      const isThrottling = err.name === 'ThrottlingException' || 
+                          err.name === 'TooManyRequestsException' ||
+                          err.message?.includes('Too many requests')
+      
+      if (isThrottling && attempt < maxRetries) {
+        const delayMs = Math.min(1000 * Math.pow(2, attempt), 8000)
+        console.log(`[Bedrock/EF] ⚠️  Throttled (intento ${attempt + 1}/${maxRetries + 1}), reintentando en ${delayMs}ms...`)
+        await sleep(delayMs)
+        continue
+      }
+      
+      throw err
+    }
+  }
+
+  if (!response) throw lastError
 
   const rawResponse = response.output?.message?.content?.[0]?.text || ''
   console.log(`[Bedrock/EF] Respuesta raw (primeros 800 chars): ${rawResponse.substring(0, 800)}`)
