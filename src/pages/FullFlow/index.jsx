@@ -10,6 +10,7 @@ import {
   createCliente,
   createSolicitud,
   updateSolicitud,
+  updateCliente,
   submitDecision,
   fetchCuentasBancarias,
   createCuentaBancaria,
@@ -268,44 +269,77 @@ export default function FullFlow() {
 
   // ── Create cliente + solicitud on Step 0 submit ──
   const handleCreateApplication = async () => {
-    setSavingApp(true)
+    setSavingApp(true);
     try {
-      const cliente = await createCliente({
-        razonSocial: formData.razonSocial,
-        nombreComercial: formData.nombreComercial || null,
-        telefono: formData.telefono || null,
-        celular: formData.celular || null,
-        correoElectronico: formData.correoElectronico || null,
-        paginaWeb: formData.paginaWeb || null,
-        numEmpleadosPermanentes: formData.numEmpleadosPermanentes || null,
-        numEmpleadosEventuales: formData.numEmpleadosEventuales || null,
-      })
-      setClienteId(cliente.id)
-      showToast.cliente.created()
+      // Si ya existe solicitudId, actualizar solicitud y cliente
+      if (solicitudId) {
+        if (clienteId) {
+          await updateCliente(clienteId, {
+            razonSocial: formData.razonSocial,
+            nombreComercial: formData.nombreComercial || null,
+            telefono: formData.telefono || null,
+            celular: formData.celular || null,
+            correoElectronico: formData.correoElectronico || null,
+            paginaWeb: formData.paginaWeb || null,
+            numEmpleadosPermanentes: formData.numEmpleadosPermanentes || null,
+            numEmpleadosEventuales: formData.numEmpleadosEventuales || null,
+          });
+          showToast.cliente.updated && showToast.cliente.updated();
+        }
+        await updateSolicitud(solicitudId, {
+          monto: Number(formData.monto),
+          divisa: formData.divisa || 'MXN',
+          plazoDeseado: formData.plazoDeseado || null,
+          destino: formData.destino || null,
+          tasaObjetivo: formData.tasaObjetivo || null,
+          tipoColateral: formData.tipoColateral || null,
+          nivelVentasAnuales: formData.nivelVentasAnuales ? Number(formData.nivelVentasAnuales) : null,
+          margenRealUtilidad: formData.margenRealUtilidad ? Number(formData.margenRealUtilidad) : null,
+          nivelBuroCredito: formData.nivelBuroCredito || null,
+          esg: formData.esg || null,
+          notas: formData.notas || null,
+        });
+        showToast.solicitud.updated();
+        setCurrentStep(1);
+      } else {
+        // Crear cliente y solicitud
+        const cliente = await createCliente({
+          razonSocial: formData.razonSocial,
+          nombreComercial: formData.nombreComercial || null,
+          telefono: formData.telefono || null,
+          celular: formData.celular || null,
+          correoElectronico: formData.correoElectronico || null,
+          paginaWeb: formData.paginaWeb || null,
+          numEmpleadosPermanentes: formData.numEmpleadosPermanentes || null,
+          numEmpleadosEventuales: formData.numEmpleadosEventuales || null,
+        });
+        setClienteId(cliente.id);
+        showToast.cliente.created();
 
-      const sol = await createSolicitud({
-        clienteId: cliente.id,
-        monto: Number(formData.monto),
-        divisa: formData.divisa || 'MXN',
-        plazoDeseado: formData.plazoDeseado || null,
-        destino: formData.destino || null,
-        tasaObjetivo: formData.tasaObjetivo || null,
-        tipoColateral: formData.tipoColateral || null,
-        nivelVentasAnuales: formData.nivelVentasAnuales ? Number(formData.nivelVentasAnuales) : null,
-        margenRealUtilidad: formData.margenRealUtilidad ? Number(formData.margenRealUtilidad) : null,
-        nivelBuroCredito: formData.nivelBuroCredito || null,
-        esg: formData.esg || null,
-        notas: formData.notas || null,
-      })
-      setSolicitudId(sol.id)
-      showToast.solicitud.created()
-      setCurrentStep(1)
+        const sol = await createSolicitud({
+          clienteId: cliente.id,
+          monto: Number(formData.monto),
+          divisa: formData.divisa || 'MXN',
+          plazoDeseado: formData.plazoDeseado || null,
+          destino: formData.destino || null,
+          tasaObjetivo: formData.tasaObjetivo || null,
+          tipoColateral: formData.tipoColateral || null,
+          nivelVentasAnuales: formData.nivelVentasAnuales ? Number(formData.nivelVentasAnuales) : null,
+          margenRealUtilidad: formData.margenRealUtilidad ? Number(formData.margenRealUtilidad) : null,
+          nivelBuroCredito: formData.nivelBuroCredito || null,
+          esg: formData.esg || null,
+          notas: formData.notas || null,
+        });
+        setSolicitudId(sol.id);
+        showToast.solicitud.created();
+        setCurrentStep(1);
+      }
     } catch (err) {
-      showToast.error(err.message || 'Error al crear la solicitud')
+      showToast.error(err.message || 'Error al crear/editar la solicitud');
     } finally {
-      setSavingApp(false)
+      setSavingApp(false);
     }
-  }
+  } 
 
   // ── Handle credit decision ──
   const handleDecision = async (type) => {
